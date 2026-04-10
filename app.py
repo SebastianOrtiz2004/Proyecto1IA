@@ -1,254 +1,316 @@
 import streamlit as st
 import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
-# Aplicar estética oscura a los gráficos matemáticos de matplotlib
 plt.style.use('dark_background')
 
-# Importaciones modulares locales (Arquitectura plana)
-from fuzzy_engine import estimate_demand, plot_fuzzy_result
-from genetic_optimizer import run_genetic_algorithm, GENERATORS
+# ── Importaciones modulares (Arquitectura Plana) ──────────────────────────────
+from fuzzy_engine import build_fuzzy_system, estimate_demand, plot_fuzzy_result
+from genetic_optimizer import (
+    run_genetic_algorithm, greedy_dispatch, GENERATORS, N_GENES
+)
 
 # ====================================================================
-# 1. CONFIGURACIÓN DEL FRAMEWORK & UI EXPERIENCIA PREMIUM
+# 1. CONFIGURACIÓN DEL FRAMEWORK & CACHÉ DEL FIS
 # ====================================================================
-st.set_page_config(page_title="Simulador de Planta Diésel", layout="wide", page_icon="⚡", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Simulador Planta Diésel — 8 Generadores",
+    layout="wide",
+    page_icon="⚡",
+    initial_sidebar_state="expanded"
+)
 
-# Inyección de CSS (Glassmorphism & Animaciones Neón Visuales) para representar la planta física
+
+@st.cache_resource
+def get_fuzzy_system():
+    """
+    El FIS Mamdani se compila UNA sola vez y se almacena en caché global de Streamlit.
+    @st.cache_resource garantiza que el objeto ctrl.ControlSystem (grafo ponderado de
+    reglas) no se reconstruya en cada interacción.  Reduce latencia ~500ms → ~5ms.
+    """
+    return build_fuzzy_system()
+
+
+# ── CSS Premium (Glassmorphism + Animaciones Neón) ────────────────────────────
 st.markdown("""
 <style>
-/* Reset base */
-.main { background-color: #0e1117; color: white;}
+.main { background-color: #0e1117; color: white; }
 
-/* Tarjetas métricas superiores */
 .kpi-card {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    border-left: 5px solid #00ffcc;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 25px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    background: rgba(255,255,255,0.05); backdrop-filter: blur(10px);
+    border-left: 5px solid #00ffcc; padding: 20px; border-radius: 8px;
+    margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
     transition: transform 0.3s;
 }
 .kpi-card:hover { transform: translateY(-5px); }
 
-/* Tarjetas físicas de simulación de generadores */
 .gen-card {
-    background: linear-gradient(145deg, rgba(20,25,35,0.9), rgba(15,20,30,0.9));
-    border: 1px solid rgba(255,255,255,0.05);
-    border-radius: 16px;
-    padding: 25px 20px;
-    margin-bottom: 20px;
-    text-align: center;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    position: relative;
-    overflow: hidden;
+    background: linear-gradient(145deg,rgba(20,25,35,0.9),rgba(15,20,30,0.9));
+    border:1px solid rgba(255,255,255,0.05); border-radius:16px;
+    padding:20px 15px; margin-bottom:18px; text-align:center;
+    transition:all 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+    position:relative; overflow:hidden;
+}
+.gen-active  { border:1px solid #00ffcc; box-shadow:0 0 25px rgba(0,255,204,0.2),inset 0 0 20px rgba(0,255,204,0.05); }
+.gen-inactive{ border:1px solid #ff3366; opacity:0.60; filter:grayscale(80%); }
+
+.gen-icon { font-size:3rem; margin-bottom:12px; }
+.active-icon  { text-shadow:0 0 15px #00ffcc,0 0 30px #00ffcc; animation:gen_pulse 1.5s infinite; }
+.inactive-icon{ color:#444; }
+
+@keyframes gen_pulse {
+    0%  { transform:scale(1);    filter:brightness(1); }
+    50% { transform:scale(1.08); filter:brightness(1.3); }
+    100%{ transform:scale(1);    filter:brightness(1); }
 }
 
-/* Efectos visuales de encendido (ON) */
-.gen-active {
-    border: 1px solid #00ffcc;
-    box-shadow: 0 0 25px rgba(0, 255, 204, 0.2), inset 0 0 20px rgba(0, 255, 204, 0.05);
-}
-
-/* Efectos visuales de apagado (OFF) */
-.gen-inactive {
-    border: 1px solid #ff3366;
-    opacity: 0.65;
-    filter: grayscale(80%);
-}
-
-.gen-icon { font-size: 3.5rem; margin-bottom: 15px; }
-
-/* Efecto de Turbina Corriendo */
-.active-icon { 
-    text-shadow: 0 0 15px #00ffcc, 0 0 30px #00ffcc; 
-    animation: generator_pulse 1.5s infinite; 
-}
-.inactive-icon { color: #444; }
-
-@keyframes generator_pulse {
-    0% { transform: scale(1); filter: brightness(1); }
-    50% { transform: scale(1.08); filter: brightness(1.3); }
-    100% { transform: scale(1); filter: brightness(1); }
-}
-
-/* Barras de Tanque/Carga simuladas fisicamente */
 .progress-rail {
-    background: #1a1d24;
-    border-radius: 10px;
-    height: 18px;
-    width: 100%;
-    margin-top: 20px;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
-    position: relative;
-    overflow: hidden;
+    background:#1a1d24; border-radius:10px; height:14px; width:100%;
+    margin-top:15px; box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);
+    position:relative; overflow:hidden;
 }
 .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #00C9FF 0%, #00ffcc 100%);
-    border-radius: 10px;
-    transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
-    box-shadow: 0 0 10px #00ffcc;
+    height:100%; background:linear-gradient(90deg,#00C9FF 0%,#00ffcc 100%);
+    border-radius:10px; transition:width 1s cubic-bezier(0.22,1,0.36,1);
+    box-shadow:0 0 10px #00ffcc;
 }
-.progress-fill-inactive { background: #444; }
+.progress-fill-inactive { background:#444;height:100%;border-radius:10px; }
 
-/* Tipografía de la simulación */
-.gen-title { font-size: 1.4rem; font-weight: 800; letter-spacing: 1px; color: #fff;}
-.gen-badge { 
-    display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; margin: 10px 0;
+.gen-title  { font-size:1.2rem; font-weight:800; letter-spacing:1px; color:#fff; }
+.gen-badge  { display:inline-block;padding:3px 9px;border-radius:12px;font-size:0.75rem;font-weight:bold;margin:8px 0; }
+.badge-on   { background:rgba(0,255,204,0.2); color:#00ffcc; }
+.badge-off  { background:rgba(255,51,102,0.2); color:#ff3366; }
+.gen-data   { font-size:0.95rem; color:#ddd; margin:4px 0; }
+.cost-data  { font-size:1rem; font-weight:bold; color:#f2c94c; }
+.gen-footer { font-size:0.7rem;color:#888;margin-top:12px;border-top:1px dashed #333;padding-top:8px; }
+
+.benchmark-box {
+    background:rgba(242,201,76,0.08); border:1px solid rgba(242,201,76,0.3);
+    border-radius:10px; padding:15px 20px; margin-top:10px;
 }
-.badge-on { background: rgba(0, 255, 204, 0.2); color: #00ffcc; }
-.badge-off { background: rgba(255, 51, 102, 0.2); color: #ff3366; }
-
-.gen-data { font-size: 1.1rem; color: #ddd; margin: 5px 0; }
-.cost-data { font-size:1.1rem; font-weight: bold; color: #f2c94c; }
-.gen-footer { font-size: 0.75rem; color: #888; margin-top: 15px; border-top: 1px dashed #333; padding-top: 10px;}
 </style>
 """, unsafe_allow_html=True)
 
-# Título Principal
-st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>⚡ Simulador en Tiempo Real: Planta Diésel</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #aaa; margin-bottom: 30px;'>Optimización Interactiva vía Algoritmo Genético + Lógica Difusa</p>", unsafe_allow_html=True)
-
-# ====================================================================
-# 2. TABLERO DE CONTROL (Entradas Interactivas de Simulación)
-# ====================================================================
-st.sidebar.markdown("### 🎛️ Modificación de Variables (Causa)")
-st.sidebar.caption("Al interactuar con estos controles, todo el clúster térmico recalculará la carga distribuida instantáneamente.")
-
-temperature_val = st.sidebar.slider("🌡 Temperatura Externa (°C)", 0.0, 100.0, 60.0, step=1.0)
-production_val = st.sidebar.slider("🏭 Carga Productiva de la Fábrica (%)", 0.0, 100.0, 75.0, step=1.0)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🧬 Algoritmo Genético")
-st.sidebar.caption("Parámetros de la metaheurística de optimización.")
-pop_size = st.sidebar.slider("Tamaño de Población", 10, 200, 60)
-generations = st.sidebar.slider("Número de Generaciones", 10, 200, 100)
-mutation_rate = st.sidebar.slider("Tasa de Mutación ($\mu$)", 0.01, 0.5, 0.1)
-
-# ====================================================================
-# FASE LÓGICA (Ejecución Instantánea de la Red)
-# ====================================================================
-demand_val, sim, demand_var = estimate_demand(temperature_val, production_val)
-
-# El GA evalúa matemáticamente el óptimo
-best_chrom, allocation, final_cost, final_prod, history = run_genetic_algorithm(
-    demand=demand_val, pop_size=pop_size, generations=generations, mutation_rate=mutation_rate
+# ── Títulos Principales ───────────────────────────────────────────────────────
+st.markdown(
+    "<h1 style='text-align:center;margin-bottom:0;'>⚡ Simulador de Despacho Económico — Planta Diésel 8 GEN</h1>",
+    unsafe_allow_html=True
+)
+st.markdown(
+    "<p style='text-align:center;color:#aaa;margin-bottom:30px;'>"
+    "Optimización Interactiva · Algoritmo Genético (NumPy) + Lógica Difusa Mamdani (skfuzzy) "
+    "· Capacidad total instalada: <b>2950 kW</b></p>",
+    unsafe_allow_html=True
 )
 
 # ====================================================================
-# 3. CONSOLA CENTRAL: DASHBOARD DE RESULTADOS (Efecto Visual)
+# 2. SIDEBAR — Controles de Simulación
 # ====================================================================
-colA, colB, colC = st.columns(3)
+st.sidebar.markdown("### 🎛️ Variables de Entrada (Antecedentes FIS)")
+st.sidebar.caption("Cada cambio re-ejecuta el FIS y el GA instantáneamente.")
 
-# Tarjeta DEMANDA (DIFUSA)
-colA.markdown(f"""
-<div class='kpi-card'>
-    <div style='color: #00ffcc;'>🧠 <b>Requerimiento Energético Estimado (Mamdani)</b></div>
-    <div style='font-size: 2.5rem; font-weight: bold; color: #fff;'>{demand_val:.1f} kW</div>
-</div>
-""", unsafe_allow_html=True)
+temperature_val = st.sidebar.slider("🌡 Temperatura Externa (°C)", 0.0, 100.0, 60.0, step=1.0)
+production_val  = st.sidebar.slider("🏭 Carga Productiva (%)",      0.0, 100.0, 75.0, step=1.0)
 
-# Tarjeta SUMINISTRO ALCANZADO (AG)
-delta_diff = final_prod - demand_val
-if final_prod >= demand_val:
-    status_str = f"Satisfecha ✅ (+{delta_diff:.1f} kW Exceso térmico)"
-    color_border = "#00ffcc"
-else:
-    status_str = f"Déficit Grave ❌ ({delta_diff:.1f} kW Penalización activada)"
-    color_border = "#ff3366"
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🧬 Parámetros del Algoritmo Genético")
+st.sidebar.caption("Metaheurística de optimización combinatoria.")
 
-colB.markdown(f"""
-<div class='kpi-card' style='border-left-color: {color_border};'>
-    <div style='color: {color_border};'>⚙️ <b>Corriente Total Suministrada (Genético)</b></div>
-    <div style='font-size: 2.5rem; font-weight: bold; color: #fff;'>{final_prod:.1f} kW</div>
-    <div style='font-size: 0.95rem; color: #ccc;'>{status_str}</div>
-</div>
-""", unsafe_allow_html=True)
+pop_size      = st.sidebar.slider("Tamaño de Población (N)",   10, 200, 60)
+generations   = st.sidebar.slider("Generaciones máx. (t_max)", 10, 300, 120)
+mutation_rate = st.sidebar.slider("Tasa de Mutación (μ)",     0.01, 0.50, 0.10, step=0.01)
+elite_k       = st.sidebar.slider("Élites preservados (k)",     1,   5,   2)
 
-# Tarjeta COSTO
-colC.markdown(f"""
-<div class='kpi-card' style='border-left-color: #f2c94c;'>
-    <div style='color: #f2c94c;'>💸 <b>Facturación de Combustible Horaria</b></div>
-    <div style='font-size: 2.5rem; font-weight: bold; color: #fff;'>${final_cost:,.2f}</div>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("<hr style='border: 1px solid #333;' />", unsafe_allow_html=True)
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    f"**Espacio de búsqueda:** `|S| = 101⁸ ≈ 1.08×10¹⁶`  \n"
+    f"**Paciencia (PATIENCE):** `{max(20, generations//5)}` gen. sin mejora"
+)
+st.sidebar.caption(
+    "La magnitud del espacio justifica el uso de metaheurísticas en lugar de "
+    "fuerza bruta o enumeración exhaustiva."
+)
 
 # ====================================================================
-# 4. SIMULACIÓN FÍSICA E INTERACTIVA DE LAS TURBINAS DIÉSEL
+# FASE LÓGICA — FIS + GA + Greedy Benchmark
 # ====================================================================
-st.markdown("### 🖥️ Estado Operativo del Clúster de Generación")
-st.caption("Visualiza el momento exacto en el que el optimizador enciende (ON) o apaga (OFF) un generador. *La barra inferior denota la carga asignada de 0 a 100%.*")
+# FIS: cacheado, compila UNA sola vez por sesión
+demand_ctrl, demand_var = get_fuzzy_system()
+demand_val, demand_sim  = estimate_demand(demand_ctrl, demand_var, temperature_val, production_val)
 
-gen_cols = st.columns(4)
-
-graficos_iconos = ["⚙️", "⚙️", "⚙️", "⚙️"] # Iconos industriales sobrios
-
-for i in range(4):
-    carga_pct = best_chrom[i]
-    cap_max = GENERATORS[i][0]
-    costo_kw = GENERATORS[i][1]
-    kw_aportados = allocation[i]
-    costo_gen = kw_aportados * costo_kw
-    
-    is_active = float(carga_pct) > 0.0
-    
-    # Evaluar clases inyectadas de UI CSS
-    status_class = "gen-active" if is_active else "gen-inactive"
-    icon_class = "active-icon" if is_active else "inactive-icon"
-    icon = graficos_iconos[i] if is_active else "💤"
-    badge_class = "badge-on" if is_active else "badge-off"
-    progress_class = "progress-fill" if is_active else "progress-fill-inactive"
-    
-    # Composición estelar de HTML para presentar como "Panel de Control Aeronáutico"
-    with gen_cols[i]:
-        html_str = f"""<div class="gen-card {status_class}">
-    <div class="gen-icon {icon_class}">{icon}</div>
-    <div class="gen-title">Generador {i+1}</div>
-    <div class="gen-badge {badge_class}">{"OPERANDO (ON)" if is_active else "APAGADO (OFF)"}</div>
-    <div class="gen-data">Potencia: <b>{kw_aportados:.1f} / {cap_max} kW</b></div>
-    <div class="cost-data">Costo Operativo: ${costo_gen:,.0f}</div>
-    <div class="progress-rail">
-        <div class="{progress_class}" style="width: {carga_pct}%;"></div>
-    </div>
-    <div style="text-align: right; font-size: 0.8rem; color:#00ffcc; font-weight:bold;">{carga_pct}% Load</div>
-    <div class="gen-footer">Eficiencia Térmica: ${costo_kw:.0f} USD/kW</div>
-</div>"""
-        st.markdown(html_str, unsafe_allow_html=True)
-
-st.markdown("<hr style='border: 1px solid #333;' />", unsafe_allow_html=True)
-
-# ====================================================================
-# 5. AUDITORÍA ACADÉMICA (GRÁFICAS DE INVESTIGACIÓN DE OPERACIONES)
-# ====================================================================
-st.markdown("### 📊 Panel de Auditoría Matemática y Matrices")
-st.caption("Visión teórica para la defensa técnica universitaria de la asignatura.")
-
-c_graf_1, c_graf_2 = st.columns([1.2, 1])
-
-with c_graf_1:
-    fig_conv = px.line(x=np.arange(1, generations + 1), y=history, 
-                       labels={'x': 'Iteraciones ($t$)', 'y': 'Costo (USD) + Barrera Penal ($)'})
-    fig_conv.update_layout(
-        title={'text': "Convergencia del Espacio Soluciones (Fitness AG)", 'x':0.5, 'xanchor': 'center'},
-        template="plotly_dark", 
-        plot_bgcolor="rgba(0,0,0,0.2)", 
-        paper_bgcolor="rgba(0,0,0,0)"
+# GA: se ejecuta en cada interacción (la demanda cambia)
+best_chrom, allocation, final_cost, final_prod, fitness_history, cost_history, gen_stopped = \
+    run_genetic_algorithm(
+        demand=demand_val,
+        pop_size=pop_size,
+        generations=generations,
+        mutation_rate=mutation_rate,
+        elite_k=elite_k,
     )
-    fig_conv.update_traces(line_color='#00ffcc', line_width=3, fill='tozeroy', fillcolor='rgba(0, 255, 204, 0.1)')
-    st.plotly_chart(fig_conv, use_container_width=True)
 
-with c_graf_2:
-    st.markdown("**Conjunto Mamdani Defuzzificado:**")
+# Greedy: referencia óptima analítica (costo lineal separable)
+greedy_alloc, greedy_cost, greedy_kw, greedy_pct = greedy_dispatch(demand_val)
+
+# ====================================================================
+# 3. KPI CARDS — Dashboard Central
+# ====================================================================
+col_a, col_b, col_c, col_d = st.columns(4)
+
+col_a.markdown(f"""
+<div class='kpi-card'>
+    <div style='color:#00ffcc;'>🧠 <b>Demanda Estimada (FIS Mamdani)</b></div>
+    <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>{demand_val:.1f} kW</div>
+    <div style='font-size:0.8rem;color:#888;'>Centroide defuzzificado · 9 reglas AND</div>
+</div>""", unsafe_allow_html=True)
+
+delta = final_prod - demand_val
+color_b = "#00ffcc" if final_prod >= demand_val else "#ff3366"
+status  = f"Satisfecha ✅ (+{delta:.0f} kW)" if delta >= 0 else f"Déficit ❌ ({delta:.0f} kW)"
+
+col_b.markdown(f"""
+<div class='kpi-card' style='border-left-color:{color_b};'>
+    <div style='color:{color_b};'>⚙️ <b>Potencia GA (cromosoma óptimo)</b></div>
+    <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>{final_prod:.1f} kW</div>
+    <div style='font-size:0.85rem;color:#ccc;'>{status}</div>
+</div>""", unsafe_allow_html=True)
+
+col_c.markdown(f"""
+<div class='kpi-card' style='border-left-color:#f2c94c;'>
+    <div style='color:#f2c94c;'>💸 <b>Costo GA (USD/h)</b></div>
+    <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>${final_cost:,.0f}</div>
+    <div style='font-size:0.8rem;color:#888;'>Sin penalización</div>
+</div>""", unsafe_allow_html=True)
+
+# ── Benchmark Greedy ─────────────────────────────────────────────────────────
+gap_pct = ((final_cost - greedy_cost) / greedy_cost * 100) if greedy_cost > 0 else 0
+gap_color = "#00ffcc" if gap_pct <= 5 else ("#f2c94c" if gap_pct <= 15 else "#ff3366")
+gap_emoji = "🟢" if gap_pct <= 5 else ("🟡" if gap_pct <= 15 else "🔴")
+
+col_d.markdown(f"""
+<div class='kpi-card' style='border-left-color:{gap_color};'>
+    <div style='color:{gap_color};'>📐 <b>Óptimo Greedy (benchmark)</b></div>
+    <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>${greedy_cost:,.0f}</div>
+    <div style='font-size:0.85rem;color:#ccc;'>{gap_emoji} Gap GA: <b>+{gap_pct:.1f}%</b> sobre óptimo</div>
+</div>""", unsafe_allow_html=True)
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ====================================================================
+# 4. ESTADO OPERATIVO DEL CLÚSTER — 8 GEN (2 filas × 4 cols)
+# ====================================================================
+st.markdown("### 🖥️ Estado Operativo del Clúster de Generación (8 Unidades)")
+st.caption(
+    "El GA prioriza generadores de menor costo unitario. "
+    "Gen 3 (BACKUP·$200/kW) y Gen 6 (EMERGENCIA·$250/kW) solo deben activarse "
+    "cuando la demanda supera la capacidad de los eficientes."
+)
+
+row1_cols = st.columns(4)
+row2_cols = st.columns(4)
+all_cols  = list(row1_cols) + list(row2_cols)
+
+ROLES = {
+    0:"Carga Media·Alto Costo",  1:"Carga Alta·Mod.",
+    2:"BACKUP CRÍTICO·$200/kW",  3:"Base·Eficiente·$80/kW",
+    4:"MÁXIMA·Eficiente·$90/kW", 5:"EMERGENCIA·$250/kW",
+    6:"Flexible·Mod.",            7:"MÁS EFICIENTE·$70/kW"
+}
+
+for i in range(N_GENES):
+    carga_pct    = int(best_chrom[i])
+    cap_max      = GENERATORS[i, 0]
+    costo_kw     = GENERATORS[i, 1]
+    kw_aportados = allocation[i]
+    costo_gen    = kw_aportados * costo_kw
+
+    is_active     = carga_pct > 0
+    s_class       = "gen-active"   if is_active else "gen-inactive"
+    i_class       = "active-icon"  if is_active else "inactive-icon"
+    icon          = "⚙️"          if is_active else "💤"
+    b_class       = "badge-on"    if is_active else "badge-off"
+    p_class       = "progress-fill" if is_active else "progress-fill-inactive"
+
+    html = f"""<div class="gen-card {s_class}">
+    <div class="gen-icon {i_class}">{icon}</div>
+    <div class="gen-title">GEN {i+1}</div>
+    <div style="font-size:0.62rem;color:#888;margin-bottom:4px;">{ROLES[i]}</div>
+    <div class="gen-badge {b_class}">{"OPERANDO (ON)" if is_active else "APAGADO (OFF)"}</div>
+    <div class="gen-data">Potencia: <b>{kw_aportados:.1f} / {int(cap_max)} kW</b></div>
+    <div class="cost-data">Costo: ${costo_gen:,.0f}</div>
+    <div class="progress-rail">
+        <div class="{p_class}" style="width:{carga_pct}%;"></div>
+    </div>
+    <div style="text-align:right;font-size:0.75rem;color:#00ffcc;font-weight:bold;">{carga_pct}% Load</div>
+    <div class="gen-footer">Eficiencia: ${costo_kw:.0f} USD/kW</div>
+</div>"""
+    with all_cols[i]:
+        st.markdown(html, unsafe_allow_html=True)
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ====================================================================
+# 5. PANEL DE AUDITORÍA MATEMÁTICA
+# ====================================================================
+st.markdown("### 📊 Panel de Auditoría Matemática")
+st.caption("Evidencia de convergencia del GA y conjunto difuso activado — para defensa técnica universitaria.")
+
+c_conv, c_fuzzy = st.columns([1.3, 1])
+
+# ── Gráfica de Convergencia (Costo Limpio solamente) ─────────────────────────
+with c_conv:
+    actual_gens = len(cost_history)   # puede ser < generations si hubo parada anticipada
+    gens_axis   = list(range(1, actual_gens + 1))
+
+    valid_pairs  = [(g, c) for g, c in zip(gens_axis, cost_history) if not np.isnan(c)]
+    first_feasible = valid_pairs[0][0] if valid_pairs else None
+
+    fig_conv = go.Figure()
+    fig_conv.add_trace(go.Scatter(
+        x=gens_axis, y=cost_history,
+        mode='lines', name='Costo Óptimo Válido (USD)',
+        line=dict(color='#00ffcc', width=3),
+        fill='tozeroy', fillcolor='rgba(0,255,204,0.07)',
+        connectgaps=False,   # NaN → gaps naturales = escape del espacio infactible
+    ))
+
+    if first_feasible and first_feasible > 2:
+        fig_conv.add_vline(
+            x=first_feasible, line_dash="dash", line_color="#f2c94c",
+            annotation_text=f"Primera solución factible (gen {first_feasible})",
+            annotation_font_color="#f2c94c", annotation_position="top right"
+        )
+
+    convergence_note = (
+        f"Convergencia detectada en gen <b>{gen_stopped}</b> / {generations} "
+        f"(PATIENCE={max(20, generations//5)})"
+        if gen_stopped < generations else
+        f"Ejecutó las {generations} generaciones completas"
+    )
+    fig_conv.update_layout(
+        title=dict(
+            text=f"Convergencia GA — Costo Operativo Mínimo · {convergence_note}",
+            x=0.5, xanchor='center', font=dict(color='#eee', size=13)
+        ),
+        xaxis=dict(title="Generación (t)", gridcolor='#2a2a3a', color='#ccc'),
+        yaxis=dict(title="Costo USD", gridcolor='#2a2a3a', color='#ccc'),
+        template="plotly_dark",
+        plot_bgcolor="#161b26", paper_bgcolor="#0e1117",
+        font=dict(color='#ddd'),
+        legend=dict(orientation='h', y=1.1, font=dict(color='#ddd')),
+    )
+    st.plotly_chart(fig_conv, use_container_width=True)
+    st.caption(
+        "ℹ️ Los gaps iniciales (si existen) indican generaciones donde ningún individuo "
+        "satisfacía g(x) (espacio infactible). Ilustra el escape de la barrera de penalización."
+    )
+
+# ── Gráfica difusa nativa de skfuzzy ─────────────────────────────────────────
+with c_fuzzy:
+    st.markdown("**Conjunto Difuso Mamdani Defuzzificado (9 reglas AND):**")
     try:
-        # Se genera la figura y se limpia el layout para ajustarse al neón theme
-        fig_f = plot_fuzzy_result(sim, demand_var)
+        fig_f = plot_fuzzy_result(demand_sim, demand_var)
         fig_f.patch.set_facecolor('#0e1117')
         ax = fig_f.gca()
         ax.set_facecolor('#0e1117')
@@ -258,8 +320,152 @@ with c_graf_2:
         ax.yaxis.label.set_color('#ddd')
         ax.tick_params(axis='x', colors='#ccc')
         ax.tick_params(axis='y', colors='#ccc')
-        
         st.pyplot(fig_f)
         plt.close(fig_f)
     except Exception as e:
-        st.error(f"Render nativo de skfuzzy inactivo: {e}")
+        st.warning(f"Render nativo de skfuzzy no disponible: {e}")
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ====================================================================
+# 6. DESPACHO ECONÓMICO FINAL — COMPARACIÓN GA vs. GREEDY  (SECCIÓN 3)
+# ====================================================================
+st.markdown("### 📈 Despacho Económico Final — GA vs. Óptimo Greedy")
+st.caption(
+    "El Greedy es la solución analítica **óptima** para funciones de costo lineales "
+    "(Principio de Optimalidad de Bellman). Sirve como referencia para cuantificar la "
+    "calidad del GA. Con modelos de costo no-lineales, el Greedy falla y el GA se justifica."
+)
+
+gen_labels = [f"Gen {i+1}<br>({int(GENERATORS[i,0])}kW)" for i in range(N_GENES)]
+
+ga_costs_op     = [allocation[i] * GENERATORS[i, 1]      for i in range(N_GENES)]
+greedy_costs_op = [greedy_alloc[i] * GENERATORS[i, 1]    for i in range(N_GENES)]
+
+fig_dispatch = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=(
+        f"Potencia Asignada por Gen. (kW)  |  GA={final_prod:.0f} kW  vs  Greedy={greedy_kw:.0f} kW",
+        f"Costo por Gen. (USD)  |  GA=${final_cost:,.0f}  vs  Greedy=${greedy_cost:,.0f}",
+    ),
+    horizontal_spacing=0.1
+)
+
+# Colores GA: gradiente verde según % de carga
+def _bar_color(pct):
+    g = int(255 * (pct / 100))
+    return f"rgba(0,{g},min({g}+50,204),0.85)" if pct > 0 else "rgba(60,60,70,0.5)"
+
+bar_colors_ga = [
+    f"rgba(0,{int(200*(best_chrom[i]/100))},{int(180*(best_chrom[i]/100))},0.85)"
+    if best_chrom[i] > 0 else "rgba(50,50,60,0.5)"
+    for i in range(N_GENES)
+]
+
+# ── Subplot 1: kW asignados ──────────────────────────────────────────────────
+# GA bars
+fig_dispatch.add_trace(go.Bar(
+    x=gen_labels, y=list(allocation),
+    name="GA (kW)", marker=dict(color=bar_colors_ga, line=dict(color='rgba(0,255,204,0.4)', width=1)),
+    text=[f"<b>{v:.0f}</b>" for v in allocation],
+    textposition='outside', textfont=dict(color='#00ffcc', size=10),
+), row=1, col=1)
+
+# Greedy bars
+fig_dispatch.add_trace(go.Bar(
+    x=gen_labels, y=list(greedy_alloc),
+    name="Greedy (kW)", marker=dict(color='rgba(150,180,255,0.4)', line=dict(color='#6699ff', width=1)),
+    text=[f"<b>{v:.0f}</b>" for v in greedy_alloc],
+    textposition='outside', textfont=dict(color='#6699ff', size=10),
+), row=1, col=1)
+
+# Línea de capacidad máxima (limit visible)
+fig_dispatch.add_trace(go.Scatter(
+    x=gen_labels, y=list(GENERATORS[:, 0]),
+    mode='lines+markers', name="Cap. máx.",
+    line=dict(color='#ff6b6b', dash='dash', width=2),
+    marker=dict(size=6, symbol='diamond'),
+), row=1, col=1)
+
+# ── Subplot 2: Costo por generador ───────────────────────────────────────────
+fig_dispatch.add_trace(go.Bar(
+    x=gen_labels, y=ga_costs_op,
+    name="Costo GA (USD)",
+    marker=dict(color='#f2c94c', opacity=0.85),
+    text=[f"<b>${v:,.0f}</b>" for v in ga_costs_op],
+    textposition='outside', textfont=dict(color='#f2c94c', size=10),
+), row=1, col=2)
+
+fig_dispatch.add_trace(go.Bar(
+    x=gen_labels, y=greedy_costs_op,
+    name="Costo Greedy (USD)",
+    marker=dict(color='rgba(102,153,255,0.5)', line=dict(color='#6699ff', width=1)),
+    text=[f"<b>${v:,.0f}</b>" for v in greedy_costs_op],
+    textposition='outside', textfont=dict(color='#6699ff', size=10),
+), row=1, col=2)
+
+fig_dispatch.update_layout(
+    barmode='group',
+    template="plotly_dark",
+    plot_bgcolor="#161b26", paper_bgcolor="#0e1117",
+    font=dict(color='#ddd'),
+    height=440, showlegend=True,
+    legend=dict(orientation='h', y=1.14, x=0.25, font=dict(size=11)),
+    title=dict(
+        text=f"Cromosoma óptimo x* · Costo GA: <b>${final_cost:,.0f}</b> · "
+             f"Greedy: <b>${greedy_cost:,.0f}</b> · Gap: <b>{gap_pct:.1f}%</b> {gap_emoji}",
+        x=0.5, xanchor='center', font=dict(size=13)
+    ),
+)
+fig_dispatch.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
+fig_dispatch.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
+st.plotly_chart(fig_dispatch, use_container_width=True)
+
+# ── Interpretación académica del GA vs. Greedy ───────────────────────────────
+with st.expander("📖 Interpretación académica: ¿Por qué usar GA si existe una solución greedy?"):
+    st.markdown(f"""
+**Para funciones de costo LINEALES** (como este modelo), el algoritmo greedy es óptimo y resolve en O(N log N).
+El GA, con codificación entera y {generations} generaciones, obtiene un costo de **${final_cost:,.0f}** vs.
+el óptimo greedy de **${greedy_cost:,.0f}** — un gap de **{gap_pct:.2f}%**.
+
+**¿Por qué implementar el GA entonces?**
+
+1. **Generalidad:** El GA acepta cualquier función f(x) — incluyendo modelos cuadráticos de función de
+   calor `Cⱼ(Pⱼ) = aⱼ·Pⱼ² + bⱼ·Pⱼ + cⱼ` (modelo real de generadores diésel) sin cambiar ningún operador.
+2. **Restricciones adicionales:** Restricciones de ramping (cambio máximo de carga entre intervalos),
+   costos de arranque/parada (Unit Commitment), y restricciones de red eléctrica rompen la separabilidad
+   del problema. El GA maneja todo esto solo cambiando la función `evaluate_fitness()`.
+3. **Integración con FIS:** El acoplamiento dinámico con el motor difuso permite replanning en tiempo real,
+   cosa que la programación lineal no permite sin reformular el modelo matemático completo.
+    """)
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ====================================================================
+# 7. VECTOR DE DECISIÓN ÓPTIMO x* Y COMPARACIÓN CON GREEDY
+# ====================================================================
+with st.expander("🔬 Cromosoma óptimo x* (vector de decisión GA) vs. Greedy"):
+    cols_header = st.columns([2] + [1]*N_GENES)
+    cols_header[0].markdown("**Método**")
+    for i in range(N_GENES):
+        cols_header[i+1].markdown(f"**Gen {i+1}**")
+
+    # Fila GA
+    cols_ga = st.columns([2] + [1]*N_GENES)
+    cols_ga[0].markdown("🤖 **GA (x\\*)**")
+    for i in range(N_GENES):
+        color = "#00ffcc" if best_chrom[i] > 0 else "#555"
+        cols_ga[i+1].markdown(
+            f"<div style='text-align:center;color:{color};font-size:1.3rem;font-weight:bold;'>"
+            f"{int(best_chrom[i])}%</div>", unsafe_allow_html=True
+        )
+
+    # Fila Greedy
+    cols_gr = st.columns([2] + [1]*N_GENES)
+    cols_gr[0].markdown("📐 **Greedy (óptimo)**")
+    for i in range(N_GENES):
+        color = "#6699ff" if greedy_pct[i] > 0 else "#555"
+        cols_gr[i+1].markdown(
+            f"<div style='text-align:center;color:{color};font-size:1.3rem;font-weight:bold;'>"
+            f"{int(greedy_pct[i])}%</div>", unsafe_allow_html=True
+        )
