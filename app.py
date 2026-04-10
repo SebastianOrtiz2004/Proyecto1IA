@@ -195,6 +195,25 @@ col_d.markdown(f"""
     <div style='font-size:0.85rem;color:#ccc;'>{gap_emoji} Gap GA: <b>+{gap_pct:.1f}%</b> sobre óptimo</div>
 </div>""", unsafe_allow_html=True)
 
+# ── Fórmulas Matemáticas (Ayuda visual para defensa) ─────────────────────────
+with st.expander("📐 Ver Formulación Matemática del Modelo (I. de Operaciones)"):
+    st.markdown("""
+    Este simulador resuelve el siguiente modelo de programación matemática para el Despacho Económico de Carga, 
+    evaluado internamente mediante una Función de Penalización Exterior asimétrica:
+    """)
+    col_eq1, col_eq2 = st.columns(2)
+    with col_eq1:
+        st.markdown("**1. Función Objetivo:** Minimizar el costo operativo total")
+        st.latex(r"\min f(x) = \sum_{j=1}^{8} \left( x_j \cdot C_j \cdot USD_j \right)")
+        st.markdown("**2. Restricción (Demanda):** La potencia debe ser mayor o igual a $D$")
+        st.latex(r"g(x): \sum_{j=1}^{8} \left( x_j \cdot C_j \right) \geq D_{Fuzzy}")
+    with col_eq2:
+        st.markdown("**3. Vector de Decisión:** Fracción de carga del generador $j$")
+        st.latex(r"x_j \in [0, 1] \quad \forall j \in \{1,\dots,8\}")
+        st.markdown("**4. Función de Fitness con Penalización ($P$):**")
+        st.latex(r"Fitness(x) = f(x) + P(x)")
+        st.latex(r"P(x) = \begin{cases} 0 & \text{si } g(x) \text{ se cumple} \\ 10^6 + 10^3 \times (\text{déficit}) & \text{en caso contrario} \end{cases}")
+
 st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
 
 # ====================================================================
