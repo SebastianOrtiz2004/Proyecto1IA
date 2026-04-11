@@ -136,11 +136,22 @@ st.sidebar.caption(
 # ====================================================================
 # FASE LÓGICA — FIS + GA + Greedy Benchmark
 # ====================================================================
-# FIS: cacheado, compila UNA sola vez por sesión
+# ── Paso 1: Ejecutar el Sistema de Inferencia Difusa (FIS Mamdani) ──────────────
+# El FIS toma los valores crisp (Temperatura y Producción) de los sliders,
+# los fuzzifica usando funciones de pertenencia triangulares, aplica las
+# 9 reglas AND de la base de conocimiento, y devuelve la demanda estimada
+# en kW mediante el método del centroide (defuzzificación).
+# demand_ctrl y demand_var están cacheados (@st.cache_resource): el grafo
+# de reglas se compila UNA sola vez por sesión, no en cada interacción.
 demand_ctrl, demand_var = get_fuzzy_system()
 demand_val, demand_sim  = estimate_demand(demand_ctrl, demand_var, temperature_val, production_val)
 
-# GA: se ejecuta en cada interacción (la demanda cambia)
+# ── Paso 2: Ejecutar el Algoritmo Genético (meta-heurística de optimización) ────
+# El GA recibe la demanda calculada por el FIS como restricción dura (Hard Constraint).
+# Genera una población inicial aleatoria de N cromosomas, cada uno con 8 genes (0–100%).
+# En cada generación aplica: Selección por torneo (k=3), Cruce de un punto (Pc=0.85),
+# Mutación uniforme (μ=tasa configurada) y Elitismo (preserva los k mejores).
+# Devuelve el cromosoma óptimo, el historial de fitness y la generación de convergencia.
 best_chrom, allocation, final_cost, final_prod, fitness_history, cost_history, gen_stopped = \
     run_genetic_algorithm(
         demand=demand_val,
@@ -150,7 +161,11 @@ best_chrom, allocation, final_cost, final_prod, fitness_history, cost_history, g
         elite_k=elite_k,
     )
 
-# Greedy: referencia óptima analítica (costo lineal separable)
+# ── Paso 3: Calcular el Benchmark Greedy (solución analítica óptima) ────────────
+# El Greedy ordena los generadores por costo unitario ascendente y asigna carga
+# al más barato primero hasta cubrir la demanda. Para costos LINEALES separables,
+# esta política es el ÓPTIMO GLOBAL garantizado (Principio de Optimalidad de Bellman).
+# Se usa como referencia para medir la calidad de la solución del GA (Gap %).
 greedy_alloc, greedy_cost, greedy_kw, greedy_pct = greedy_dispatch(demand_val)
 
 # ====================================================================
@@ -261,11 +276,119 @@ for i in range(N_GENES):
     <div class="progress-rail">
         <div class="{p_class}" style="width:{carga_pct}%;"></div>
     </div>
-    <div style="text-align:right;font-size:0.75rem;color:#00ffcc;font-weight:bold;">{carga_pct}% Load</div>
+    <div style="text-align:right;font-size:0.75rem;color:#00ffcc;font-weight:bold;">{carga_pct}% Carga</div>
     <div class="gen-footer">Eficiencia: ${costo_kw:.0f} USD/kW</div>
 </div>"""
     with all_cols[i]:
         st.markdown(html, unsafe_allow_html=True)
+
+# ── Gráfico Visual del Clúster de Generación ──────────────────────────────────
+# Este gráfico muestra de forma compacta y comparativa el estado de TODOS los
+# generadores simultáneamente: carga asignada (%) como barras horizontales,
+# con código de color por tipo de generador (eficiente / moderado / backup).
+st.markdown("#### 📊 Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
+
+# Construimos los vectores de datos para el gráfico
+gen_nombres   = [f"Gen {i+1}  ({int(GENERATORS[i,0])} kW máx)" for i in range(N_GENES)]
+cargas_pct    = [int(best_chrom[i]) for i in range(N_GENES)]
+kw_vals       = [float(allocation[i]) for i in range(N_GENES)]
+costos_unitarios = [float(GENERATORS[i, 1]) for i in range(N_GENES)]
+
+# Paleta de colores según costo unitario del generador:
+#   Verde intenso  → muy eficiente (USD/kW bajo)
+#   Amarillo       → costo moderado
+#   Rojo/naranja   → BACKUP o EMERGENCIA (caro)
+def _color_por_costo(costo_unit, activo):
+    if not activo:
+        return 'rgba(80, 80, 90, 0.5)'   # gris apagado
+    if costo_unit <= 90:
+        return 'rgba(0, 220, 160, 0.85)'  # verde: eficiente
+    elif costo_unit <= 130:
+        return 'rgba(100, 180, 255, 0.85)' # azul: moderado
+    else:
+        return 'rgba(255, 100, 80, 0.85)'  # rojo: caro / backup
+
+colores_barras = [_color_por_costo(costos_unitarios[i], cargas_pct[i] > 0)
+                  for i in range(N_GENES)]
+
+# Figura con dos paneles horizontales (subplots lado a lado)
+fig_cluster = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=(
+        "Carga Asignada por el AG (%)",
+        "Potencia Despachada (kW)",
+    ),
+    horizontal_spacing=0.12
+)
+
+# ── Panel izquierdo: Porcentaje de carga (%) por generador ────────────────
+fig_cluster.add_trace(go.Bar(
+    y=gen_nombres,                       # eje Y = nombres de generadores
+    x=cargas_pct,                        # eje X = % de carga asignada
+    orientation='h',                     # barras HORIZONTALES
+    name='Carga (%)',
+    marker=dict(color=colores_barras, line=dict(color='rgba(255,255,255,0.1)', width=1)),
+    text=[f'{v}%' for v in cargas_pct],  # etiqueta al final de cada barra
+    textposition='outside',
+    textfont=dict(color='#eee', size=11),
+    hovertemplate='<b>%{y}</b><br>Carga: %{x}%<extra></extra>',
+), row=1, col=1)
+
+# Línea vertical de referencia al 100% (capacidad máxima)
+fig_cluster.add_vline(
+    x=100, line_dash='dot', line_color='rgba(255,255,255,0.2)',
+    row=1, col=1
+)
+
+# ── Panel derecho: kW despachados por generador ───────────────────────────
+fig_cluster.add_trace(go.Bar(
+    y=gen_nombres,
+    x=kw_vals,
+    orientation='h',
+    name='Potencia (kW)',
+    marker=dict(color=colores_barras, line=dict(color='rgba(255,255,255,0.1)', width=1)),
+    text=[f'{v:.0f} kW' for v in kw_vals],
+    textposition='outside',
+    textfont=dict(color='#eee', size=11),
+    hovertemplate='<b>%{y}</b><br>Potencia: %{x} kW<extra></extra>',
+), row=1, col=2)
+
+# Línea vertical indicando la demanda total requerida (referencia proporcional)
+# Se dibuja en el panel derecho como guía visual de demanda
+fig_cluster.add_vline(
+    x=demand_val, line_dash='dash', line_color='#f2c94c',
+    annotation_text=f"Demanda: {demand_val:.0f} kW",
+    annotation_font_color='#f2c94c',
+    annotation_position='top right',
+    row=1, col=2
+)
+
+# Layout general del gráfico del clúster
+fig_cluster.update_layout(
+    template='plotly_dark',
+    plot_bgcolor='#161b26',
+    paper_bgcolor='#0e1117',
+    font=dict(color='#ddd'),
+    height=360,
+    showlegend=False,
+    margin=dict(l=10, r=20, t=55, b=10),
+    title=dict(
+        text=(f"Estado del Clúster Diésel · Demanda FIS: {demand_val:.0f} kW · "
+              f"Despacho GA: {final_prod:.0f} kW"),
+        x=0.5, xanchor='center', font=dict(size=13, color='#eee')
+    ),
+)
+fig_cluster.update_xaxes(gridcolor='#2a2a3a', range=[0, 115], row=1, col=1)
+fig_cluster.update_xaxes(gridcolor='#2a2a3a', row=1, col=2)
+fig_cluster.update_yaxes(gridcolor='#2a2a3a')
+
+st.plotly_chart(fig_cluster, use_container_width=True)
+st.caption(
+    "🟢 Verde: generadores eficientes (≤$90/kW)  |  "
+    "🔵 Azul: costo moderado ($91–$130/kW)  |  "
+    "🔴 Rojo: BACKUP / EMERGENCIA (>$130/kW)  |  "
+    "⬜ Gris: apagado por el optimizador"
+)
 
 st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
 
