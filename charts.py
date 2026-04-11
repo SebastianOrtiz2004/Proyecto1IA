@@ -7,11 +7,11 @@ recibe los datos que necesita y llama a st.plotly_chart() / st.pyplot()
 internamente.
 
 Funciones:
-    plot_cluster_bars()     → Gráfico de barras horizontales (carga % y kW por gen.)
-    plot_cluster_kmeans()   → Gráfico de clúster estilo K-Means (nube de puntos)
-    plot_convergence()      → Curva de convergencia del GA (costo limpio vs. generación)
-    plot_fuzzy_membership() → Conjunto difuso defuzzificado de skfuzzy (Matplotlib)
-    plot_dispatch_comparison() → GA vs. Greedy (barras dobles kW y costo por gen.)
+    graficar_cluster_barras()      → Barras horizontales (% carga y kW por generador)
+    graficar_cluster_kmeans()      → Nube de puntos estilo K-Medias
+    graficar_convergencia()        → Curva de costo mínimo vs. generación del AG
+    graficar_membresia_difusa()    → Conjunto difuso defuzzificado (skfuzzy)
+    graficar_comparacion_despacho()→ AG vs. Voraz (barras dobles kW y costo)
 """
 
 import streamlit as st
@@ -24,37 +24,38 @@ import matplotlib.pyplot as plt
 # ====================================================================
 # GRÁFICO 1: BARRAS HORIZONTALES POR GENERADOR (% Carga y kW)
 # ====================================================================
-def plot_cluster_bars(best_chrom, allocation, GENERATORS, N_GENES, demand_val, final_prod):
+def graficar_cluster_barras(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES,
+                             demanda_kw, potencia_ag):
     """
-    Gráfico de barras horizontales con dos paneles (subplots):
+    Gráfico de barras horizontales con dos paneles:
       - Panel izquierdo:  % de carga asignado a cada generador
-      - Panel derecho:    kW despachados por generador + línea de demanda FIS
+      - Panel derecho:    kW despachados + línea de demanda del SID
 
-    El color de cada barra codifica el perfil económico:
-      Verde  → generador eficiente (≤$90/kW)
-      Azul   → costo moderado ($91–$130/kW)
-      Rojo   → BACKUP / EMERGENCIA (>$130/kW)
-      Gris   → apagado
+    Paleta de colores según perfil económico:
+      Verde  → eficiente (≤$90/kW)
+      Azul   → moderado ($91–$130/kW)
+      Rojo   → RESPALDO / EMERGENCIA (>$130/kW)
+      Gris   → apagado por el AG
 
     Parámetros
     ----------
-    best_chrom  : ndarray (8,) — genes óptimos del GA (% de carga)
-    allocation  : ndarray (8,) — kW asignados por generador
-    GENERATORS  : ndarray (8,2) — [capacidad, costo] por generador
-    N_GENES     : int
-    demand_val  : float — demanda en kW estimada por el FIS
-    final_prod  : float — potencia total despachada por el GA
+    mejor_cromosoma : ndarray (8,) — genes óptimos del AG (% de carga)
+    asignacion      : ndarray (8,) — kW asignados por generador
+    GENERADORES     : ndarray (8,2)
+    N_GENERADORES   : int
+    demanda_kw      : float — demanda estimada por el SID
+    potencia_ag     : float — potencia total despachada por el AG
     """
     st.markdown("#### 📊 Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
 
     # Vectores de datos
-    gen_nombres      = [f"Gen {i+1}  ({int(GENERATORS[i,0])} kW máx)" for i in range(N_GENES)]
-    cargas_pct       = [int(best_chrom[i]) for i in range(N_GENES)]
-    kw_vals          = [float(allocation[i]) for i in range(N_GENES)]
-    costos_unitarios = [float(GENERATORS[i, 1]) for i in range(N_GENES)]
+    nombres_gen      = [f"Gen {i+1}  ({int(GENERADORES[i,0])} kW máx)" for i in range(N_GENERADORES)]
+    porcentajes      = [int(mejor_cromosoma[i]) for i in range(N_GENERADORES)]
+    valores_kw       = [float(asignacion[i]) for i in range(N_GENERADORES)]
+    costos_unitarios = [float(GENERADORES[i, 1]) for i in range(N_GENERADORES)]
 
-    # Paleta de colores según costo unitario
-    def _color(costo_unit, activo):
+    # Función local de color según costo unitario y estado
+    def _color_barra(costo_unit, activo):
         if not activo:
             return 'rgba(80,80,90,0.5)'
         if costo_unit <= 90:
@@ -63,135 +64,138 @@ def plot_cluster_bars(best_chrom, allocation, GENERATORS, N_GENES, demand_val, f
             return 'rgba(100,180,255,0.85)'
         return 'rgba(255,100,80,0.85)'
 
-    colores = [_color(costos_unitarios[i], cargas_pct[i] > 0) for i in range(N_GENES)]
+    colores = [_color_barra(costos_unitarios[i], porcentajes[i] > 0) for i in range(N_GENERADORES)]
 
-    fig = make_subplots(
+    figura = make_subplots(
         rows=1, cols=2,
         subplot_titles=("Carga Asignada por el AG (%)", "Potencia Despachada (kW)"),
         horizontal_spacing=0.12
     )
 
-    # Panel izquierdo: % de carga
-    fig.add_trace(go.Bar(
-        y=gen_nombres, x=cargas_pct, orientation='h', name='Carga (%)',
+    # Panel izquierdo: % de carga por generador
+    figura.add_trace(go.Bar(
+        y=nombres_gen, x=porcentajes, orientation='h', name='Carga (%)',
         marker=dict(color=colores, line=dict(color='rgba(255,255,255,0.1)', width=1)),
-        text=[f'{v}%' for v in cargas_pct],
+        text=[f'{v}%' for v in porcentajes],
         textposition='outside', textfont=dict(color='#eee', size=11),
         hovertemplate='<b>%{y}</b><br>Carga: %{x}%<extra></extra>',
     ), row=1, col=1)
-    fig.add_vline(x=100, line_dash='dot', line_color='rgba(255,255,255,0.2)', row=1, col=1)
+    figura.add_vline(x=100, line_dash='dot', line_color='rgba(255,255,255,0.2)', row=1, col=1)
 
     # Panel derecho: kW despachados + línea de demanda
-    fig.add_trace(go.Bar(
-        y=gen_nombres, x=kw_vals, orientation='h', name='Potencia (kW)',
+    figura.add_trace(go.Bar(
+        y=nombres_gen, x=valores_kw, orientation='h', name='Potencia (kW)',
         marker=dict(color=colores, line=dict(color='rgba(255,255,255,0.1)', width=1)),
-        text=[f'{v:.0f} kW' for v in kw_vals],
+        text=[f'{v:.0f} kW' for v in valores_kw],
         textposition='outside', textfont=dict(color='#eee', size=11),
         hovertemplate='<b>%{y}</b><br>Potencia: %{x} kW<extra></extra>',
     ), row=1, col=2)
-    fig.add_vline(
-        x=demand_val, line_dash='dash', line_color='#f2c94c',
-        annotation_text=f"Demanda: {demand_val:.0f} kW",
+    figura.add_vline(
+        x=demanda_kw, line_dash='dash', line_color='#f2c94c',
+        annotation_text=f"Demanda: {demanda_kw:.0f} kW",
         annotation_font_color='#f2c94c', annotation_position='top right',
         row=1, col=2
     )
 
-    fig.update_layout(
+    figura.update_layout(
         template='plotly_dark', plot_bgcolor='#161b26', paper_bgcolor='#0e1117',
         font=dict(color='#ddd'), height=360, showlegend=False,
         margin=dict(l=10, r=20, t=55, b=10),
         title=dict(
-            text=f"Estado del Clúster Diésel · Demanda FIS: {demand_val:.0f} kW · Despacho GA: {final_prod:.0f} kW",
+            text=f"Clúster Diésel · Demanda SID: {demanda_kw:.0f} kW · Despacho AG: {potencia_ag:.0f} kW",
             x=0.5, xanchor='center', font=dict(size=13, color='#eee')
         ),
     )
-    fig.update_xaxes(gridcolor='#2a2a3a', range=[0, 115], row=1, col=1)
-    fig.update_xaxes(gridcolor='#2a2a3a', row=1, col=2)
-    fig.update_yaxes(gridcolor='#2a2a3a')
+    figura.update_xaxes(gridcolor='#2a2a3a', range=[0, 115], row=1, col=1)
+    figura.update_xaxes(gridcolor='#2a2a3a', row=1, col=2)
+    figura.update_yaxes(gridcolor='#2a2a3a')
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(figura, use_container_width=True)
     st.caption(
         "🟢 Verde: eficientes (≤$90/kW)  |  "
         "🔵 Azul: moderados ($91–$130/kW)  |  "
-        "🔴 Rojo: BACKUP / EMERGENCIA (>$130/kW)  |  "
-        "⬜ Gris: apagado"
+        "🔴 Rojo: RESPALDO / EMERGENCIA (>$130/kW)  |  "
+        "⬜ Gris: apagado por el optimizador"
     )
 
 
 # ====================================================================
-# GRÁFICO 2: CLÚSTER ESTILO K-MEANS (NUBE DE PUNTOS)
+# GRÁFICO 2: CLÚSTER ESTILO K-MEDIAS (NUBE DE PUNTOS)
 # ====================================================================
-def plot_cluster_kmeans(best_chrom, allocation, GENERATORS, N_GENES, final_prod, final_cost, gap_pct):
+def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES,
+                             potencia_ag, costo_ag, brecha_pct):
     """
-    Gráfico de dispersión estilo K-Means: muestra los 8 generadores
-    agrupados en 3 clústeres por perfil económico (costo unitario), con
-    nubes de puntos normalmente distribuidas alrededor de cada centroide.
+    Gráfico de dispersión estilo K-Medias: muestra los 8 generadores
+    agrupados en 3 clústeres por perfil económico (costo unitario).
+    Genera nubes de puntos normalmente distribuidas alrededor de cada centroide.
 
     Clústeres:
       🟢 Eficientes ($70–$90/kW):  Gen 4, 5, 8
       🟡 Moderados  ($100–$110/kW): Gen 2, 7
       🔴 Costosos   ($150–$250/kW): Gen 1, 3, 6
 
-    Las estrellas (⭐) marcan los generadores reales del sistema.
-    El tamaño de la burbuja es fijo; la actividad se muestra por color.
+    Las estrellas (⭐) marcan los generadores activos del sistema.
 
     Parámetros
     ----------
-    best_chrom : ndarray (8,) — genes óptimos del GA (% de carga)
-    allocation : ndarray (8,) — kW asignados por generador
-    GENERATORS : ndarray (8,2)
-    N_GENES    : int
-    final_prod : float — potencia total GA (kW)
-    final_cost : float — costo GA (USD)
-    gap_pct    : float — gap vs. Greedy (%)
+    mejor_cromosoma : ndarray (8,)
+    asignacion      : ndarray (8,)
+    GENERADORES     : ndarray (8,2)
+    N_GENERADORES   : int
+    potencia_ag     : float — potencia total AG (kW)
+    costo_ag        : float — costo AG (USD)
+    brecha_pct      : float — brecha vs. Voraz (%)
     """
-    st.markdown("#### 🔵 Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Means)")
+    st.markdown("#### 🔵 Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Medias)")
     st.caption(
         "Cada nube de puntos representa un clúster de generadores con costo operativo similar. "
-        "La **estrella ⭐** indica el generador real activo; el **círculo abierto** indica apagado. "
-        "El GA siempre prioriza el clúster 🟢 verde (más económico)."
+        "La **estrella ⭐** indica el generador activo; el **círculo abierto** indica apagado. "
+        "El AG prioriza siempre el clúster 🟢 verde (más económico)."
     )
 
-    # Semilla fija para que la nube no cambie en cada interacción
-    rng_km = np.random.default_rng(seed=42)
+    # Semilla fija: la nube no cambia entre ejecuciones del simulador
+    generador_aleatorio = np.random.default_rng(seed=42)
 
-    # Definición de los 3 clústeres: índices en GENERATORS (base-0)
-    CLUSTERS_KM = [
-        {"nombre": "Clúster 1 — Eficientes",  "indices": [3, 4, 7], "color": "#2ecc71", "rgba": "rgba(46,204,113,0.50)",  "n": 65},
-        {"nombre": "Clúster 2 — Moderados",   "indices": [1, 6],    "color": "#f1c40f", "rgba": "rgba(241,196,15,0.50)", "n": 50},
-        {"nombre": "Clúster 3 — Costosos",    "indices": [0, 2, 5], "color": "#e74c3c", "rgba": "rgba(231,76,60,0.50)",  "n": 65},
+    # Definición de los 3 clústeres económicos (índices en GENERADORES base-0)
+    CLUSTERS = [
+        {"nombre": "Clúster 1 — Eficientes",  "indices": [3, 4, 7], "color": "#2ecc71", "rgba": "rgba(46,204,113,0.50)",  "num_puntos": 65},
+        {"nombre": "Clúster 2 — Moderados",   "indices": [1, 6],    "color": "#f1c40f", "rgba": "rgba(241,196,15,0.50)", "num_puntos": 50},
+        {"nombre": "Clúster 3 — Costosos",    "indices": [0, 2, 5], "color": "#e74c3c", "rgba": "rgba(231,76,60,0.50)",  "num_puntos": 65},
     ]
 
-    fig = go.Figure()
+    figura = go.Figure()
 
-    for c in CLUSTERS_KM:
-        idx = c["indices"]
-        # Centroide del clúster (media de costo y capacidad de sus generadores)
-        cx = np.mean([GENERATORS[i, 1] for i in idx])
-        cy = np.mean([GENERATORS[i, 0] for i in idx])
-        # Dispersión proporcional al rango del clúster
-        sx = np.std([GENERATORS[i, 1] for i in idx]) + 8
-        sy = np.std([GENERATORS[i, 0] for i in idx]) + 55
-        # Nube de puntos alrededor del centroide (distribución normal)
-        cx_pts = rng_km.normal(cx, sx, c["n"])
-        cy_pts = rng_km.normal(cy, sy, c["n"])
+    for cluster in CLUSTERS:
+        indices = cluster["indices"]
 
-        # Traza 1: nube de puntos del clúster (sin hover, solo visual)
-        fig.add_trace(go.Scatter(
-            x=cx_pts, y=cy_pts, mode='markers', name=c["nombre"],
-            marker=dict(size=7, color=c["rgba"], line=dict(color=c["color"], width=0.8)),
+        # Centroide del clúster: media de costo (eje X) y capacidad (eje Y)
+        centro_x = np.mean([GENERADORES[i, 1] for i in indices])
+        centro_y = np.mean([GENERADORES[i, 0] for i in indices])
+
+        # Dispersión proporcional al rango del clúster más un margen base
+        dispersion_x = np.std([GENERADORES[i, 1] for i in indices]) + 8
+        dispersion_y = np.std([GENERADORES[i, 0] for i in indices]) + 55
+
+        # Nube de puntos normalmente distribuida alrededor del centroide
+        puntos_x = generador_aleatorio.normal(centro_x, dispersion_x, cluster["num_puntos"])
+        puntos_y = generador_aleatorio.normal(centro_y, dispersion_y, cluster["num_puntos"])
+
+        # Traza 1: nube de puntos del clúster (solo visual, sin hover)
+        figura.add_trace(go.Scatter(
+            x=puntos_x, y=puntos_y, mode='markers', name=cluster["nombre"],
+            marker=dict(size=7, color=cluster["rgba"], line=dict(color=cluster["color"], width=0.8)),
             hoverinfo='skip', showlegend=True,
         ))
 
         # Traza 2: generadores reales (estrella si activo, círculo abierto si apagado)
-        for i in idx:
-            activo = best_chrom[i] > 0
-            fig.add_trace(go.Scatter(
-                x=[GENERATORS[i, 1]], y=[GENERATORS[i, 0]],
+        for i in indices:
+            activo = mejor_cromosoma[i] > 0
+            figura.add_trace(go.Scatter(
+                x=[GENERADORES[i, 1]], y=[GENERADORES[i, 0]],
                 mode='markers+text', showlegend=False,
                 marker=dict(
                     size=20 if activo else 13,
-                    color=c["color"] if activo else 'rgba(100,100,110,0.6)',
+                    color=cluster["color"] if activo else 'rgba(100,100,110,0.6)',
                     symbol='star' if activo else 'circle-open',
                     line=dict(color='white' if activo else '#555', width=1.5),
                     opacity=1.0 if activo else 0.6,
@@ -201,35 +205,37 @@ def plot_cluster_kmeans(best_chrom, allocation, GENERATORS, N_GENES, final_prod,
                 textfont=dict(color='white', size=10, family='Arial Black'),
                 hovertext=(
                     f"<b>Gen {i+1}</b><br>"
-                    f"Clúster: {c['nombre']}<br>"
-                    f"Capacidad: {int(GENERATORS[i,0])} kW<br>"
-                    f"Costo unitario: ${int(GENERATORS[i,1])}/kW<br>"
-                    f"kW asignados: {float(allocation[i]):.1f}<br>"
-                    f"Carga: {int(best_chrom[i])}%<br>"
-                    f"Costo parcial: ${float(allocation[i])*GENERATORS[i,1]:,.0f}<br>"
+                    f"Clúster: {cluster['nombre']}<br>"
+                    f"Capacidad: {int(GENERADORES[i,0])} kW<br>"
+                    f"Costo unitario: ${int(GENERADORES[i,1])}/kW<br>"
+                    f"kW asignados: {float(asignacion[i]):.1f}<br>"
+                    f"Carga: {int(mejor_cromosoma[i])}%<br>"
+                    f"Costo parcial: ${float(asignacion[i])*GENERADORES[i,1]:,.0f}<br>"
                     f"Estado: {'⭐ OPERANDO' if activo else '⚫ APAGADO'}"
                 ),
                 hoverinfo='text',
             ))
 
-    fig.update_layout(
+    figura.update_layout(
         template='plotly_dark', plot_bgcolor='#0f1319', paper_bgcolor='#0e1117',
         font=dict(color='#ddd', family='Arial'), height=470,
         margin=dict(l=30, r=30, t=75, b=70),
         title=dict(
             text=(
-                f"Clúster de Generadores (K-Means)  ·  "
-                f"Despacho GA: <b>{final_prod:.0f} kW</b>  ·  "
-                f"Costo: <b>${final_cost:,.0f}</b>  ·  Gap vs Greedy: <b>{gap_pct:.1f}%</b>"
+                f"Clúster de Generadores (K-Medias)  ·  "
+                f"Despacho AG: <b>{potencia_ag:.0f} kW</b>  ·  "
+                f"Costo: <b>${costo_ag:,.0f}</b>  ·  Brecha vs Voraz: <b>{brecha_pct:.1f}%</b>"
             ),
             x=0.5, xanchor='center', font=dict(size=13, color='#eee')
         ),
-        xaxis=dict(title='Costo Operativo Unitario (USD/kW)', gridcolor='#1a1f2e', zeroline=False, color='#888', tickprefix='$'),
+        xaxis=dict(title='Costo Operativo Unitario (USD/kW)', gridcolor='#1a1f2e',
+                   zeroline=False, color='#888', tickprefix='$'),
         yaxis=dict(title='Capacidad Máxima (kW)', gridcolor='#1a1f2e', zeroline=False, color='#888'),
-        legend=dict(orientation='h', y=-0.20, x=0.5, xanchor='center', font=dict(size=11, color='#ccc'), bgcolor='rgba(0,0,0,0)'),
+        legend=dict(orientation='h', y=-0.20, x=0.5, xanchor='center',
+                    font=dict(size=11, color='#ccc'), bgcolor='rgba(0,0,0,0)'),
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(figura, use_container_width=True)
     st.caption(
         "⭐ Estrella grande = generador activo  |  ○ Círculo = apagado por el AG  |  "
         "🟢 Eficientes ($70–$90/kW)  ·  🟡 Moderados ($100–$110/kW)  ·  🔴 Costosos ($150–$250/kW)"
@@ -237,54 +243,54 @@ def plot_cluster_kmeans(best_chrom, allocation, GENERATORS, N_GENES, final_prod,
 
 
 # ====================================================================
-# GRÁFICO 3: CURVA DE CONVERGENCIA DEL GA
+# GRÁFICO 3: CURVA DE CONVERGENCIA DEL AG
 # ====================================================================
-def plot_convergence(cost_history, gen_stopped, generations):
+def graficar_convergencia(historial_costo, gen_parada, num_generaciones):
     """
     Gráfica de línea del costo operativo mínimo válido (sin penalización)
-    a lo largo de las generaciones del GA. Los gaps NaN son generaciones
-    donde ningún individuo satisfacía la restricción de demanda g(x).
+    a lo largo de las generaciones del AG.
 
-    También marca con una línea vertical la primera generación factible
-    (si tardó más de 2 generaciones en aparecer).
+    Los valores NaN corresponden a generaciones donde ningún cromosoma
+    satisfacía la restricción de demanda g(x). Se representan como gaps
+    en la curva, ilustrando el escape del espacio infactible.
 
     Parámetros
     ----------
-    cost_history : list[float] — costo mínimo limpio por generación (NaN si infactible)
-    gen_stopped  : int         — generación en que el GA convergió/paró
-    generations  : int         — límite máximo de generaciones configurado
+    historial_costo  : list[float] — costo mínimo limpio por generación (NaN si infactible)
+    gen_parada       : int         — generación en que el AG convergió
+    num_generaciones : int         — límite máximo configurado
     """
-    actual_gens    = len(cost_history)
-    gens_axis      = list(range(1, actual_gens + 1))
-    valid_pairs    = [(g, c) for g, c in zip(gens_axis, cost_history) if not np.isnan(c)]
-    first_feasible = valid_pairs[0][0] if valid_pairs else None
+    total_generaciones = len(historial_costo)
+    eje_generaciones   = list(range(1, total_generaciones + 1))
+    pares_validos      = [(g, c) for g, c in zip(eje_generaciones, historial_costo) if not np.isnan(c)]
+    primera_factible   = pares_validos[0][0] if pares_validos else None
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=gens_axis, y=cost_history,
+    figura = go.Figure()
+    figura.add_trace(go.Scatter(
+        x=eje_generaciones, y=historial_costo,
         mode='lines', name='Costo Óptimo Válido (USD)',
         line=dict(color='#00ffcc', width=3),
         fill='tozeroy', fillcolor='rgba(0,255,204,0.07)',
-        connectgaps=False,   # NaN → gaps = escapes del espacio infactible
+        connectgaps=False,   # NaN → gaps naturales en la curva
     ))
 
-    if first_feasible and first_feasible > 2:
-        fig.add_vline(
-            x=first_feasible, line_dash="dash", line_color="#f2c94c",
-            annotation_text=f"Primera solución factible (gen {first_feasible})",
+    if primera_factible and primera_factible > 2:
+        figura.add_vline(
+            x=primera_factible, line_dash="dash", line_color="#f2c94c",
+            annotation_text=f"Primera sol. factible (gen {primera_factible})",
             annotation_font_color="#f2c94c", annotation_position="top right"
         )
 
-    convergence_note = (
-        f"Convergencia detectada en gen <b>{gen_stopped}</b> / {generations} "
-        f"(PATIENCE={max(20, generations//5)})"
-        if gen_stopped < generations else
-        f"Ejecutó las {generations} generaciones completas"
+    nota_convergencia = (
+        f"Convergencia en gen <b>{gen_parada}</b> / {num_generaciones} "
+        f"(PACIENCIA={max(20, num_generaciones//5)})"
+        if gen_parada < num_generaciones else
+        f"Ejecutó las {num_generaciones} generaciones completas"
     )
 
-    fig.update_layout(
+    figura.update_layout(
         title=dict(
-            text=f"Convergencia GA — Costo Operativo Mínimo · {convergence_note}",
+            text=f"Convergencia AG — Costo Mínimo · {nota_convergencia}",
             x=0.5, xanchor='center', font=dict(color='#eee', size=13)
         ),
         xaxis=dict(title="Generación (t)", gridcolor='#2a2a3a', color='#ccc'),
@@ -293,151 +299,148 @@ def plot_convergence(cost_history, gen_stopped, generations):
         font=dict(color='#ddd'),
         legend=dict(orientation='h', y=1.1, font=dict(color='#ddd')),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(figura, use_container_width=True)
     st.caption(
-        "ℹ️ Los gaps iniciales (si existen) indican generaciones donde ningún individuo "
-        "satisfacía g(x) (espacio infactible). Ilustra el escape de la barrera de penalización."
+        "ℹ️ Los gaps iniciales indican generaciones donde ningún cromosoma "
+        "satisfacía g(x). Ilustra el escape de la barrera de penalización."
     )
 
 
 # ====================================================================
 # GRÁFICO 4: CONJUNTO DIFUSO DEFUZZIFICADO (skfuzzy / Matplotlib)
 # ====================================================================
-def plot_fuzzy_membership(demand_sim, demand_var, plot_fuzzy_result_fn):
+def graficar_membresia_difusa(simulacion_difusa, var_demanda, funcion_graficar):
     """
     Renderiza el gráfico nativo de skfuzzy con el conjunto de pertenencia
     del consecuente (Demanda) activado según la inferencia actual.
 
-    Aplica un estilo oscuro consistente con el resto de la UI.
-    Usa plt.close() para liberar memoria tras renderizar.
+    Aplica estilo oscuro consistente con el resto de la interfaz.
+    Llama plt.close() al final para liberar memoria.
 
     Parámetros
     ----------
-    demand_sim          : ControlSystemSimulation — objeto con la inferencia actual
-    demand_var          : ctrl.Consequent         — variable consecuente del FIS
-    plot_fuzzy_result_fn: callable — función plot_fuzzy_result de fuzzy_engine.py
+    simulacion_difusa : ControlSystemSimulation — objeto con la inferencia actual
+    var_demanda       : ctrl.Consequent         — variable consecuente del SID
+    funcion_graficar  : callable — graficar_resultado_difuso de fuzzy_engine.py
     """
     st.markdown("**Conjunto Difuso Mamdani Defuzzificado (9 reglas AND):**")
     try:
-        fig_f = plot_fuzzy_result_fn(demand_sim, demand_var)
-        fig_f.patch.set_facecolor('#0e1117')
-        ax = fig_f.gca()
-        ax.set_facecolor('#0e1117')
-        for spine in ax.spines.values():
-            spine.set_color('#555')
-        ax.xaxis.label.set_color('#ddd')
-        ax.yaxis.label.set_color('#ddd')
-        ax.tick_params(axis='x', colors='#ccc')
-        ax.tick_params(axis='y', colors='#ccc')
-        st.pyplot(fig_f)
-        plt.close(fig_f)
-    except Exception as e:
-        st.warning(f"Render nativo de skfuzzy no disponible: {e}")
+        figura_difusa = funcion_graficar(simulacion_difusa, var_demanda)
+        figura_difusa.patch.set_facecolor('#0e1117')
+        eje = figura_difusa.gca()
+        eje.set_facecolor('#0e1117')
+        for borde in eje.spines.values():
+            borde.set_color('#555')
+        eje.xaxis.label.set_color('#ddd')
+        eje.yaxis.label.set_color('#ddd')
+        eje.tick_params(axis='x', colors='#ccc')
+        eje.tick_params(axis='y', colors='#ccc')
+        st.pyplot(figura_difusa)
+        plt.close(figura_difusa)
+    except Exception as error:
+        st.warning(f"Renderizado del conjunto difuso no disponible: {error}")
 
 
 # ====================================================================
-# GRÁFICO 5: DESPACHO ECONÓMICO GA vs. GREEDY (BARRAS DOBLES)
+# GRÁFICO 5: DESPACHO ECONÓMICO AG vs. VORAZ (BARRAS DOBLES)
 # ====================================================================
-def plot_dispatch_comparison(allocation, greedy_alloc, GENERATORS, N_GENES,
-                              final_prod, greedy_kw, final_cost, greedy_cost,
-                              gap_pct, gap_emoji, best_chrom):
+def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_GENERADORES,
+                                   potencia_ag, potencia_voraz, costo_ag, costo_voraz,
+                                   brecha_pct, emoji_brecha, mejor_cromosoma):
     """
-    Gráfico de barras agrupadas (subplots) comparando la solución del GA
-    con la solución Greedy generador por generador:
-      - Subplot izquierdo: kW asignados por generador (GA vs. Greedy)
-      - Subplot derecho:   Costo USD por generador   (GA vs. Greedy)
-
-    También incluye una línea roja discontinua de capacidad máxima.
+    Gráfico de barras agrupadas comparando AG vs. Voraz generador por generador:
+      - Panel izquierdo: kW asignados (AG vs. Voraz + línea de capacidad máxima)
+      - Panel derecho:   Costo USD por generador (AG vs. Voraz)
 
     Parámetros
     ----------
-    allocation   : ndarray (8,) — kW asignados por el GA
-    greedy_alloc : ndarray (8,) — kW asignados por el Greedy
-    GENERATORS   : ndarray (8,2)
-    N_GENES      : int
-    final_prod   : float — potencia total GA
-    greedy_kw    : float — potencia total Greedy
-    final_cost   : float — costo total GA
-    greedy_cost  : float — costo total Greedy
-    gap_pct      : float — gap porcentual
-    gap_emoji    : str   — emoji de color del gap
-    best_chrom   : ndarray (8,) — cromosoma óptimo (para colorear barras GA)
+    asignacion       : ndarray (8,) — kW asignados por el AG
+    asignacion_voraz : ndarray (8,) — kW asignados por el Voraz
+    GENERADORES      : ndarray (8,2)
+    N_GENERADORES    : int
+    potencia_ag      : float
+    potencia_voraz   : float
+    costo_ag         : float
+    costo_voraz      : float
+    brecha_pct       : float
+    emoji_brecha     : str
+    mejor_cromosoma  : ndarray (8,)
     """
-    st.markdown("### 📈 Despacho Económico Final — GA vs. Óptimo Greedy")
+    st.markdown("### 📈 Despacho Económico Final — AG vs. Algoritmo Voraz")
     st.caption(
-        "El Greedy es la solución analítica **óptima** para funciones de costo lineales "
-        "(Principio de Optimalidad de Bellman). Sirve como referencia para cuantificar la "
-        "calidad del GA. Con modelos de costo no-lineales, el Greedy falla y el GA se justifica."
+        "El Voraz es la referencia heurística óptima para costos lineales. "
+        "Con modelo cuadrático-térmico (T > 0), el Voraz da solución subóptima "
+        "porque ignora el costo marginal creciente con la carga. El AG puede superarlo."
     )
 
-    gen_labels      = [f"Gen {i+1}<br>({int(GENERATORS[i,0])}kW)" for i in range(N_GENES)]
-    ga_costs_op     = [allocation[i] * GENERATORS[i, 1]   for i in range(N_GENES)]
-    greedy_costs_op = [greedy_alloc[i] * GENERATORS[i, 1] for i in range(N_GENES)]
+    etiquetas_gen  = [f"Gen {i+1}<br>({int(GENERADORES[i,0])}kW)" for i in range(N_GENERADORES)]
+    costos_ag_op   = [asignacion[i] * GENERADORES[i, 1]       for i in range(N_GENERADORES)]
+    costos_voraz_op = [asignacion_voraz[i] * GENERADORES[i, 1] for i in range(N_GENERADORES)]
 
-    # Colores GA: gradiente basado en % de carga del cromosoma
-    bar_colors_ga = [
-        f"rgba(0,{int(200*(best_chrom[i]/100))},{int(180*(best_chrom[i]/100))},0.85)"
-        if best_chrom[i] > 0 else "rgba(50,50,60,0.5)"
-        for i in range(N_GENES)
+    # Gradiente de color para barras del AG según % de carga
+    colores_ag = [
+        f"rgba(0,{int(200*(mejor_cromosoma[i]/100))},{int(180*(mejor_cromosoma[i]/100))},0.85)"
+        if mejor_cromosoma[i] > 0 else "rgba(50,50,60,0.5)"
+        for i in range(N_GENERADORES)
     ]
 
-    fig = make_subplots(
+    figura = make_subplots(
         rows=1, cols=2,
         subplot_titles=(
-            f"Potencia Asignada por Gen. (kW)  |  GA={final_prod:.0f} kW  vs  Greedy={greedy_kw:.0f} kW",
-            f"Costo por Gen. (USD)  |  GA=${final_cost:,.0f}  vs  Greedy=${greedy_cost:,.0f}",
+            f"kW Asignados por Gen.  |  AG={potencia_ag:.0f} kW  vs  Voraz={potencia_voraz:.0f} kW",
+            f"Costo por Gen. (USD)   |  AG=${costo_ag:,.0f}  vs  Voraz=${costo_voraz:,.0f}",
         ),
         horizontal_spacing=0.1
     )
 
-    # Subplot 1: kW asignados — GA, Greedy y línea de capacidad máxima
-    fig.add_trace(go.Bar(
-        x=gen_labels, y=list(allocation), name="GA (kW)",
-        marker=dict(color=bar_colors_ga, line=dict(color='rgba(0,255,204,0.4)', width=1)),
-        text=[f"<b>{v:.0f}</b>" for v in allocation],
+    # Panel izquierdo: kW — AG, Voraz y línea de capacidad máxima
+    figura.add_trace(go.Bar(
+        x=etiquetas_gen, y=list(asignacion), name="AG (kW)",
+        marker=dict(color=colores_ag, line=dict(color='rgba(0,255,204,0.4)', width=1)),
+        text=[f"<b>{v:.0f}</b>" for v in asignacion],
         textposition='outside', textfont=dict(color='#00ffcc', size=10),
     ), row=1, col=1)
 
-    fig.add_trace(go.Bar(
-        x=gen_labels, y=list(greedy_alloc), name="Greedy (kW)",
+    figura.add_trace(go.Bar(
+        x=etiquetas_gen, y=list(asignacion_voraz), name="Voraz (kW)",
         marker=dict(color='rgba(150,180,255,0.4)', line=dict(color='#6699ff', width=1)),
-        text=[f"<b>{v:.0f}</b>" for v in greedy_alloc],
+        text=[f"<b>{v:.0f}</b>" for v in asignacion_voraz],
         textposition='outside', textfont=dict(color='#6699ff', size=10),
     ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(
-        x=gen_labels, y=list(GENERATORS[:, 0]),
+    figura.add_trace(go.Scatter(
+        x=etiquetas_gen, y=list(GENERADORES[:, 0]),
         mode='lines+markers', name="Cap. máx.",
         line=dict(color='#ff6b6b', dash='dash', width=2),
         marker=dict(size=6, symbol='diamond'),
     ), row=1, col=1)
 
-    # Subplot 2: Costo por generador — GA vs. Greedy
-    fig.add_trace(go.Bar(
-        x=gen_labels, y=ga_costs_op, name="Costo GA (USD)",
+    # Panel derecho: costo por generador — AG vs. Voraz
+    figura.add_trace(go.Bar(
+        x=etiquetas_gen, y=costos_ag_op, name="Costo AG (USD)",
         marker=dict(color='#f2c94c', opacity=0.85),
-        text=[f"<b>${v:,.0f}</b>" for v in ga_costs_op],
+        text=[f"<b>${v:,.0f}</b>" for v in costos_ag_op],
         textposition='outside', textfont=dict(color='#f2c94c', size=10),
     ), row=1, col=2)
 
-    fig.add_trace(go.Bar(
-        x=gen_labels, y=greedy_costs_op, name="Costo Greedy (USD)",
+    figura.add_trace(go.Bar(
+        x=etiquetas_gen, y=costos_voraz_op, name="Costo Voraz (USD)",
         marker=dict(color='rgba(102,153,255,0.5)', line=dict(color='#6699ff', width=1)),
-        text=[f"<b>${v:,.0f}</b>" for v in greedy_costs_op],
+        text=[f"<b>${v:,.0f}</b>" for v in costos_voraz_op],
         textposition='outside', textfont=dict(color='#6699ff', size=10),
     ), row=1, col=2)
 
-    fig.update_layout(
+    figura.update_layout(
         barmode='group', template="plotly_dark",
         plot_bgcolor="#161b26", paper_bgcolor="#0e1117",
         font=dict(color='#ddd'), height=440, showlegend=True,
         legend=dict(orientation='h', y=1.14, x=0.25, font=dict(size=11)),
         title=dict(
-            text=f"Cromosoma óptimo x* · Costo GA: <b>${final_cost:,.0f}</b> · "
-                 f"Greedy: <b>${greedy_cost:,.0f}</b> · Gap: <b>{gap_pct:.1f}%</b> {gap_emoji}",
+            text=f"Cromosoma óptimo x* · Costo AG: <b>${costo_ag:,.0f}</b> · "
+                 f"Voraz: <b>${costo_voraz:,.0f}</b> · Brecha: <b>{brecha_pct:.1f}%</b> {emoji_brecha}",
             x=0.5, xanchor='center', font=dict(size=13)
         ),
     )
-    fig.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
-    fig.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
-    st.plotly_chart(fig, use_container_width=True)
+    figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
+    figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
+    st.plotly_chart(figura, use_container_width=True)

@@ -2,24 +2,24 @@ import numpy as np
 import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 import matplotlib
-matplotlib.use('Agg')   # Evita conflictos de backend con Streamlit
+matplotlib.use('Agg')   # Evita conflictos de hilo con Streamlit
 import matplotlib.pyplot as plt
 
 
-def build_fuzzy_system():
+def construir_sistema_difuso():
     """
-    Construye y compila el Sistema de Inferencia Difusa (FIS) de tipo Mamdani.
-    Esta función es PURA (sin estado de simulación) y puede cachearse de forma
-    segura con @st.cache_resource en app.py para evitar recompilaciones.
+    Construye y compila el Sistema de Inferencia Difusa (SID) de tipo Mamdani.
+    Esta función es PURA (sin estado de simulación) y puede almacenarse en
+    caché con @st.cache_resource en app.py para evitar recompilaciones.
 
     ──────────────────────────────────────────────────────
-    JUSTIFICACIÓN MATEMÁTICA (Defensa PhD):
+    JUSTIFICACIÓN MATEMÁTICA (Defensa Universitaria):
     ──────────────────────────────────────────────────────
-    Se modelan la incertidumbre de las variables lingüísticas mediante funciones
+    Se modela la incertidumbre de las variables lingüísticas mediante funciones
     de pertenencia triangulares μ(x) ∈ [0,1].
-    El motor opera bajo lógica Mamdani (operadores min/max estrictos):
-        T-Norma (AND)    : μ_AND(x,y) = min(μ_A(x), μ_B(y))
-        T-Conorma (OR)   : μ_OR(x,y)  = max(μ_A(x), μ_B(y))
+    El motor opera bajo lógica Mamdani (operadores mín/máx estrictos):
+        T-Norma (AND)    : μ_AND(x,y) = mín(μ_A(x), μ_B(y))
+        T-Conorma (OR)   : μ_OR(x,y)  = máx(μ_A(x), μ_B(y))
     Defuzzificación por Centroide (Centro de Gravedad):
         u* = ∫ u · μ_agregada(u) du  /  ∫ μ_agregada(u) du
     ──────────────────────────────────────────────────────
@@ -27,130 +27,125 @@ def build_fuzzy_system():
     ESCENARIO: Planta en modo isla con 8 generadores diésel.
     Capacidad total instalada: ~2950 kW.
 
-    Returns
+    Retorna
     -------
-    demand_ctrl : ctrl.ControlSystem    — grafo compilado de reglas
-    demand_var  : ctrl.Consequent       — variable de salida (para plot)
+    sistema_control : ctrl.ControlSystem  — grafo compilado de reglas
+    var_demanda     : ctrl.Consequent     — variable de salida (para graficar)
     """
 
-    # ── 1. UNIVERSOS DE DISCURSO ────────────────────────────────────────────
-    # Temperatura de máquinas : 0 a 100 °C
-    temperature = ctrl.Antecedent(np.arange(0, 101, 1), 'temperature')
-    # Nivel de producción de la fábrica : 0 a 100 %
-    production  = ctrl.Antecedent(np.arange(0, 101, 1), 'production')
-    # Demanda energética estimada : 200 a 2200 kW
-    # (ajustado al parque de 8 gen. con cap. total ~2950 kW)
-    demand = ctrl.Consequent(np.arange(200, 2201, 1), 'demand')
+    # ── 1. UNIVERSOS DE DISCURSO ─────────────────────────────────────────────
+    # Temperatura exterior de la planta: 0 a 100 °C
+    var_temperatura = ctrl.Antecedent(np.arange(0, 101, 1), 'temperature')
+    # Nivel de carga productiva de la fábrica: 0 a 100 %
+    var_produccion  = ctrl.Antecedent(np.arange(0, 101, 1), 'production')
+    # Demanda energética estimada: 200 a 2200 kW
+    # (ajustado al parque de 8 generadores con capacidad total ~2950 kW)
+    var_demanda = ctrl.Consequent(np.arange(200, 2201, 1), 'demand')
 
-    # ── 2. FUNCIONES DE PERTENENCIA (MF) TRIANGULARES ──────────────────────
-    # Antecedente: Temperatura
+    # ── 2. FUNCIONES DE PERTENENCIA TRIANGULARES ─────────────────────────────
+    # Antecedente 1: Temperatura
     #   frio(0,0,45)  normal(30,50,70)  caliente(55,100,100)
-    temperature['frio']     = fuzz.trimf(temperature.universe, [0,   0,   45])
-    temperature['normal']   = fuzz.trimf(temperature.universe, [30,  50,  70])
-    temperature['caliente'] = fuzz.trimf(temperature.universe, [55, 100, 100])
+    var_temperatura['frio']     = fuzz.trimf(var_temperatura.universe, [0,   0,   45])
+    var_temperatura['normal']   = fuzz.trimf(var_temperatura.universe, [30,  50,  70])
+    var_temperatura['caliente'] = fuzz.trimf(var_temperatura.universe, [55, 100, 100])
 
-    # Antecedente: Producción
+    # Antecedente 2: Producción
     #   bajo(0,0,45)  medio(30,50,70)  alto(55,100,100)
-    production['bajo']  = fuzz.trimf(production.universe, [0,   0,   45])
-    production['medio'] = fuzz.trimf(production.universe, [30,  50,  70])
-    production['alto']  = fuzz.trimf(production.universe, [55, 100, 100])
+    var_produccion['bajo']  = fuzz.trimf(var_produccion.universe, [0,   0,   45])
+    var_produccion['medio'] = fuzz.trimf(var_produccion.universe, [30,  50,  70])
+    var_produccion['alto']  = fuzz.trimf(var_produccion.universe, [55, 100, 100])
 
-    # Consecuente: Demanda  (rango ampliado para 8 generadores)
+    # Consecuente: Demanda (rango ampliado para 8 generadores)
     #   baja(200,200,800)  media(600,1100,1600)  alta(1300,2200,2200)
-    demand['baja']  = fuzz.trimf(demand.universe, [200,  200,   800])
-    demand['media'] = fuzz.trimf(demand.universe, [600,  1100, 1600])
-    demand['alta']  = fuzz.trimf(demand.universe, [1300, 2200, 2200])
+    var_demanda['baja']  = fuzz.trimf(var_demanda.universe, [200,  200,   800])
+    var_demanda['media'] = fuzz.trimf(var_demanda.universe, [600,  1100, 1600])
+    var_demanda['alta']  = fuzz.trimf(var_demanda.universe, [1300, 2200, 2200])
 
-    # ── 3. BASE DE REGLAS MAMDANI (9 reglas — cobertura completa del hiperespacio) ─
+    # ── 3. BASE DE REGLAS MAMDANI (9 reglas — cobertura completa) ────────────
     #
     # Tabla de cobertura (3 conjuntos × 3 conjuntos = 9 combinaciones):
     #
-    #   Producc. \ Temp. │  Frío         │  Normal       │  Caliente     │
-    #   ─────────────────┼───────────────┼───────────────┼───────────────┤
-    #   Alto             │ rule1 (alta)  │ rule2 (alta)  │ rule3 (alta)  │
-    #   Medio            │ rule4 (baja)  │ rule5 (media) │ rule6 (alta)  │  ← rule6 cubre el gap
-    #   Bajo             │ rule7 (baja)  │ rule8 (baja)  │ rule9 (media) │
+    #   Producción \ Temp. │  Frío           │  Normal         │  Caliente       │
+    #   ───────────────────┼─────────────────┼─────────────────┼─────────────────┤
+    #   Alto               │ regla1 (alta)   │ regla2 (alta)   │ regla3 (alta)   │
+    #   Medio              │ regla4 (baja)   │ regla5 (media)  │ regla6 (alta)   │
+    #   Bajo               │ regla7 (baja)   │ regla8 (baja)   │ regla9 (media)  │
     #
-    # Todas usan T-Norma (AND = min) — coherencia semántica estricta Mamdani.
-    # La separación en reglas atómicas (sin OR compuesto) facilita la
-    # trazabilidad de la activación y la justificación ante un auditor.
-    # ─────────────────────────────────────────────────────────────────────────
+    # Todas usan T-Norma (AND = mín) — coherencia semántica estricta Mamdani.
+    # ──────────────────────────────────────────────────────────────────────────
 
     # Bloque 1: Producción ALTA → demanda siempre ALTA (independiente de temp.)
-    rule1 = ctrl.Rule(production['alto'] & temperature['frio'],      demand['alta'])
-    rule2 = ctrl.Rule(production['alto'] & temperature['normal'],    demand['alta'])
-    rule3 = ctrl.Rule(production['alto'] & temperature['caliente'],  demand['alta'])
+    regla1 = ctrl.Rule(var_produccion['alto'] & var_temperatura['frio'],      var_demanda['alta'])
+    regla2 = ctrl.Rule(var_produccion['alto'] & var_temperatura['normal'],    var_demanda['alta'])
+    regla3 = ctrl.Rule(var_produccion['alto'] & var_temperatura['caliente'],  var_demanda['alta'])
 
     # Bloque 2: Producción MEDIA → demanda varía con temperatura
-    rule4 = ctrl.Rule(production['medio'] & temperature['frio'],     demand['baja'])
-    rule5 = ctrl.Rule(production['medio'] & temperature['normal'],   demand['media'])
-    rule6 = ctrl.Rule(production['medio'] & temperature['caliente'], demand['alta'])  # ← regla crítica añadida
+    regla4 = ctrl.Rule(var_produccion['medio'] & var_temperatura['frio'],     var_demanda['baja'])
+    regla5 = ctrl.Rule(var_produccion['medio'] & var_temperatura['normal'],   var_demanda['media'])
+    regla6 = ctrl.Rule(var_produccion['medio'] & var_temperatura['caliente'], var_demanda['alta'])
 
-    # Bloque 3: Producción BAJA → demanda generalmente BAJA, sube con temperatura
-    rule7 = ctrl.Rule(production['bajo'] & temperature['frio'],      demand['baja'])
-    rule8 = ctrl.Rule(production['bajo'] & temperature['normal'],    demand['baja'])
-    rule9 = ctrl.Rule(production['bajo'] & temperature['caliente'],  demand['media'])
+    # Bloque 3: Producción BAJA → demanda generalmente baja, sube con temperatura
+    regla7 = ctrl.Rule(var_produccion['bajo'] & var_temperatura['frio'],      var_demanda['baja'])
+    regla8 = ctrl.Rule(var_produccion['bajo'] & var_temperatura['normal'],    var_demanda['baja'])
+    regla9 = ctrl.Rule(var_produccion['bajo'] & var_temperatura['caliente'],  var_demanda['media'])
 
-    # ── 4. COMPILACIÓN DEL MOTOR DE INFERENCIA ──────────────────────────────
+    # ── 4. COMPILACIÓN DEL MOTOR DE INFERENCIA ───────────────────────────────
     # PROPIEDAD DE COMPLETITUD (Mamdani, 1975 / Zadeh, 1973):
-    # Una base de reglas es COMPLETA si y solo si para todo punto (x₁,x₂) del
-    # universo de entrada, al menos una regla tiene μ_antecedente > 0.
-    # Con 9 reglas AND y MFs triangulares solapadas (ver tabla anterior),
-    # se garantiza que μ_agregada(u) > 0 para cualquier entrada ∈ [0,100]².
-    # → No existe riesgo de ZeroDivisionError en el centroide.
-    # → El sistema produce output definido para TODA combinación de entradas.
-    demand_ctrl = ctrl.ControlSystem([
-        rule1, rule2, rule3,   # producción alta
-        rule4, rule5, rule6,   # producción media
-        rule7, rule8, rule9,   # producción baja
+    # Con 9 reglas AND y funciones de pertenencia triangulares solapadas,
+    # se garantiza μ_agregada(u) > 0 para cualquier entrada ∈ [0,100]².
+    # → No existe riesgo de división por cero en el centroide.
+    sistema_control = ctrl.ControlSystem([
+        regla1, regla2, regla3,   # producción alta
+        regla4, regla5, regla6,   # producción media
+        regla7, regla8, regla9,   # producción baja
     ])
 
-    return demand_ctrl, demand
+    return sistema_control, var_demanda
 
 
-def estimate_demand(demand_ctrl, demand_var, temperature_val: float, production_val: float):
+def estimar_demanda(sistema_control, var_demanda, valor_temperatura: float, valor_produccion: float):
     """
-    Fase de Inferencia: recibe el sistema PRE-COMPILADO y valores crisp.
-    Aplica np.clip para robustez ante entradas fuera del universo.
+    Fase de Inferencia Difusa: recibe el motor PRE-COMPILADO y valores crisp.
+    Aplica np.clip para robustez ante entradas fuera del universo de discurso.
 
-    Retorna el valor defuzzificado (centroide) y el objeto simulación
+    Retorna el valor defuzzificado (centroide) y el objeto de simulación
     para posterior visualización del conjunto activado.
 
-    Parameters
+    Parámetros
     ----------
-    demand_ctrl   : ctrl.ControlSystem  — motor compilado (cacheado en app.py)
-    demand_var    : ctrl.Consequent     — variable consecuente
-    temperature_val : float             — temperatura en °C [0, 100]
-    production_val  : float             — nivel de producción en % [0, 100]
+    sistema_control  : ctrl.ControlSystem        — motor compilado (cacheado)
+    var_demanda      : ctrl.Consequent            — variable consecuente
+    valor_temperatura : float                     — temperatura en °C [0, 100]
+    valor_produccion  : float                     — carga productiva en % [0, 100]
 
-    Returns
+    Retorna
     -------
-    crisp_output : float                — demanda en kW (valor defuzzificado)
-    sim          : ControlSystemSimulation — objeto con estado de la inferencia
+    salida_crisp : float                          — demanda en kW (centroide)
+    simulacion   : ControlSystemSimulation        — objeto con estado de la inferencia
     """
-    sim = ctrl.ControlSystemSimulation(demand_ctrl)
+    simulacion = ctrl.ControlSystemSimulation(sistema_control)
 
-    # Clip defensivo: garantiza que las entradas estén dentro del universo
-    sim.input['temperature'] = float(np.clip(temperature_val, 0, 100))
-    sim.input['production']  = float(np.clip(production_val,  0, 100))
+    # Recorte defensivo: garantiza que las entradas estén dentro del universo
+    simulacion.input['temperature'] = float(np.clip(valor_temperatura, 0, 100))
+    simulacion.input['production']  = float(np.clip(valor_produccion,  0, 100))
 
     # Cómputo del centroide: u* = ∫ u·μ(u) du / ∫ μ(u) du
-    sim.compute()
+    simulacion.compute()
 
-    return sim.output['demand'], sim
+    return simulacion.output['demand'], simulacion
 
 
-def plot_fuzzy_result(demand_sim, demand_var):
+def graficar_resultado_difuso(simulacion, var_demanda):
     """
     Genera un objeto Figure de Matplotlib con el conjunto difuso del consecuente
     activado según el resultado de la última inferencia.
 
-    skfuzzy dibuja sobre plt.gcf() automáticamente mediante demand_var.view().
+    skfuzzy dibuja sobre plt.gcf() automáticamente mediante var_demanda.view().
     Se recupera la figura instanciada y se devuelve para que app.py la controle
-    (evita memory leaks con plt.close() que se hace en app.py).
+    (evitar pérdidas de memoria con plt.close() que se llama en app.py).
     """
-    demand_var.view(sim=demand_sim)
-    fig = plt.gcf()
-    fig.set_size_inches(7, 3)
+    var_demanda.view(sim=simulacion)
+    figura = plt.gcf()
+    figura.set_size_inches(7, 3)
     plt.tight_layout()
-    return fig
+    return figura

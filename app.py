@@ -2,52 +2,59 @@
 app.py — Orquestador Principal del Simulador de Despacho Económico
 ==================================================================
 Punto de entrada de la aplicación Streamlit. Su único rol es:
-  1. Configurar la página y el caché del FIS Mamdani
-  2. Leer los controles del sidebar (entradas del usuario)
-  3. Ejecutar la lógica: FIS → GA → Greedy Benchmark
-  4. Llamar a los módulos de UI y graficas para renderizar los resultados
+  1. Configurar la página y el caché del Sistema de Inferencia Difusa (SID)
+  2. Leer los controles del panel lateral (entradas del usuario)
+  3. Ejecutar la lógica: SID → AG → Despacho Voraz (referencia)
+  4. Llamar a los módulos de interfaz y gráficos para renderizar resultados
 
 NO contiene lógica de cálculo ni código HTML/CSS. Toda la presentación
-está en ui_components.py y charts.py; toda la lógica en fuzzy_engine.py
-y genetic_optimizer.py.
+está en componentes_ui.py y graficos.py; toda la lógica en motor_difuso.py
+y optimizador_genetico.py.
 
 Arquitectura del proyecto:
-  app.py              → Orquestador (este archivo)
-  fuzzy_engine.py     → Motor de Inferencia Difusa Mamdani (FIS)
-  genetic_optimizer.py→ Algoritmo Genético vectorizado en NumPy
-  ui_components.py    → Componentes HTML/CSS de la interfaz
-  charts.py           → Gráficos Plotly y Matplotlib
+  app.py                → Orquestador (este archivo)
+  fuzzy_engine.py       → Motor de Inferencia Difusa Mamdani (SID)
+  genetic_optimizer.py  → Algoritmo Genético vectorizado en NumPy
+  ui_components.py      → Componentes HTML/CSS de la interfaz
+  charts.py             → Gráficos Plotly y Matplotlib
 """
 
 import streamlit as st
 import matplotlib
-matplotlib.use('Agg')   # Backend sin ventana para evitar errores de threading
+matplotlib.use('Agg')   # Modo sin ventana para evitar errores de hilo
 import matplotlib.pyplot as plt
 
 # ── Módulos propios del proyecto ──────────────────────────────────────────────
-from fuzzy_engine import build_fuzzy_system, estimate_demand, plot_fuzzy_result
+from fuzzy_engine import (
+    construir_sistema_difuso,
+    estimar_demanda,
+    graficar_resultado_difuso,
+)
 from genetic_optimizer import (
-    run_genetic_algorithm, greedy_dispatch, GENERATORS, N_GENES
+    ejecutar_ag,
+    despacho_voraz,
+    GENERADORES,
+    N_GENERADORES,
 )
 from ui_components import (
-    inject_css,
-    render_header,
-    render_kpi_cards,
-    render_math_formulas,
-    render_generator_cards,
-    render_decision_vector,
-    render_academic_expander,
+    inyectar_css,
+    renderizar_encabezado,
+    renderizar_tarjetas_kpi,
+    renderizar_formulas_matematicas,
+    renderizar_tarjetas_generadores,
+    renderizar_vector_decision,
+    renderizar_expander_academico,
 )
 from charts import (
-    plot_cluster_bars,
-    plot_cluster_kmeans,
-    plot_convergence,
-    plot_fuzzy_membership,
-    plot_dispatch_comparison,
+    graficar_cluster_barras,
+    graficar_cluster_kmeans,
+    graficar_convergencia,
+    graficar_membresia_difusa,
+    graficar_comparacion_despacho,
 )
 
 # ====================================================================
-# 1. CONFIGURACIÓN DE LA PÁGINA Y CACHÉ DEL FIS
+# 1. CONFIGURACIÓN DE LA PÁGINA Y CACHÉ DEL SID
 # ====================================================================
 st.set_page_config(
     page_title="Simulador Planta Diésel — 8 Generadores",
@@ -58,41 +65,41 @@ st.set_page_config(
 
 
 @st.cache_resource
-def get_fuzzy_system():
+def obtener_sistema_difuso():
     """
-    El FIS Mamdani se compila UNA sola vez y se almacena en caché global.
+    El SID Mamdani se compila UNA sola vez y se almacena en caché global.
     @st.cache_resource garantiza que el grafo de reglas no se reconstruya
     en cada interacción del usuario. Reduce latencia ~500ms → ~5ms.
     """
-    return build_fuzzy_system()
+    return construir_sistema_difuso()
 
 
 # ── Inyectar CSS global y renderizar encabezado ───────────────────────────────
-inject_css()
-render_header()
+inyectar_css()
+renderizar_encabezado()
 
 # ====================================================================
-# 2. SIDEBAR — Controles de Simulación (Entradas del Usuario)
+# 2. PANEL LATERAL — Controles de Simulación (Entradas del Usuario)
 # ====================================================================
-st.sidebar.markdown("### 🎛️ Variables de Entrada (Antecedentes FIS)")
-st.sidebar.caption("Cada cambio re-ejecuta el FIS y el GA instantáneamente.")
+st.sidebar.markdown("### 🎛️ Variables de Entrada (Antecedentes SID)")
+st.sidebar.caption("Cada cambio re-ejecuta el SID y el AG instantáneamente.")
 
-temperature_val = st.sidebar.slider("🌡 Temperatura Externa (°C)", 0.0, 100.0, 60.0, step=1.0)
-production_val  = st.sidebar.slider("🏭 Carga Productiva (%)",      0.0, 100.0, 75.0, step=1.0)
+valor_temperatura = st.sidebar.slider("🌡 Temperatura Exterior (°C)", 0.0, 100.0, 60.0, step=1.0)
+valor_produccion  = st.sidebar.slider("🏭 Carga Productiva (%)",      0.0, 100.0, 75.0, step=1.0)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🧬 Parámetros del Algoritmo Genético")
 st.sidebar.caption("Metaheurística de optimización combinatoria.")
 
-pop_size      = st.sidebar.slider("Tamaño de Población (N)",   10, 200, 60)
-generations   = st.sidebar.slider("Generaciones máx. (t_max)", 10, 300, 120)
-mutation_rate = st.sidebar.slider("Tasa de Mutación (μ)",     0.01, 0.50, 0.10, step=0.01)
-elite_k       = st.sidebar.slider("Élites preservados (k)",     1,   5,   2)
+tam_poblacion  = st.sidebar.slider("Tamaño de Población (N)",    10, 200, 60)
+num_generaciones = st.sidebar.slider("Generaciones máx. (t_max)", 10, 300, 120)
+tasa_mutacion  = st.sidebar.slider("Tasa de Mutación (μ)",      0.01, 0.50, 0.10, step=0.01)
+num_elites     = st.sidebar.slider("Élites preservados (k)",      1,   5,   2)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
     f"**Espacio de búsqueda:** `|S| = 101⁸ ≈ 1.08×10¹⁶`  \n"
-    f"**Paciencia (PATIENCE):** `{max(20, generations//5)}` gen. sin mejora"
+    f"**Paciencia (PACIENCIA):** `{max(20, num_generaciones//5)}` gen. sin mejora"
 )
 st.sidebar.caption(
     "La magnitud del espacio justifica el uso de metaheurísticas en lugar de "
@@ -100,87 +107,98 @@ st.sidebar.caption(
 )
 
 # ====================================================================
-# 3. FASE LÓGICA — FIS → GA → GREEDY BENCHMARK
+# 3. FASE LÓGICA — SID → AG → VORAZ (REFERENCIA)
 # ====================================================================
 
-# ── Paso 1: Sistema de Inferencia Difusa (FIS Mamdani) ───────────────────────
+# ── Paso 1: Sistema de Inferencia Difusa Mamdani ─────────────────────────────
 # Fuzzifica Temperatura y Producción, aplica las 9 reglas AND de la base
-# de conocimiento, y devuelve la demanda estimada en kW (centroide).
-demand_ctrl, demand_var = get_fuzzy_system()
-demand_val, demand_sim  = estimate_demand(demand_ctrl, demand_var, temperature_val, production_val)
+# de conocimiento, y retorna la demanda estimada en kW (centroide).
+sistema_control, var_demanda = obtener_sistema_difuso()
+demanda_kw, simulacion_difusa = estimar_demanda(
+    sistema_control, var_demanda, valor_temperatura, valor_produccion
+)
 
-# ── Paso 2: Algoritmo Genético (meta-heurística de optimización) ───────────────────────
-# Recibe la demanda del FIS como restricción dura Y la temperatura exterior como
-# parámetro del modelo de costo cuadrático-térmico:
+# ── Paso 2: Algoritmo Genético (metaheurística de optimización) ──────────────
+# Recibe la demanda del SID como restricción dura Y la temperatura exterior
+# como parámetro del modelo de costo cuadrático-térmico:
 #   Cⱼ(Pⱼ, T) = base_j × Pⱼ  +  αⱼ × (T/100) × Pⱼ²
-# El término cuadrático rompe la separabilidad del problema → el Greedy YA NO ES
-# óptimo. El GA evalúa el cromosoma completo y puede encontrar repartos de carga
-# que el Greedy descarta por operar generador a generador.
-best_chrom, allocation, final_cost, final_prod, fitness_history, cost_history, gen_stopped = \
-    run_genetic_algorithm(
-        demand=demand_val,
-        temperature=temperature_val,
-        pop_size=pop_size,
-        generations=generations,
-        mutation_rate=mutation_rate,
-        elite_k=elite_k,
+# El término cuadrático rompe la separabilidad → el Voraz deja de ser óptimo.
+# El AG evalúa el cromosoma completo y descubre repartos de carga óptimos.
+mejor_cromosoma, asignacion, costo_ag, potencia_ag, \
+    historial_aptitud, historial_costo, gen_parada = ejecutar_ag(
+        demanda=demanda_kw,
+        temperatura=valor_temperatura,
+        tam_poblacion=tam_poblacion,
+        generaciones=num_generaciones,
+        tasa_mutacion=tasa_mutacion,
+        num_elites=num_elites,
     )
 
-# ── Paso 3: Benchmark Greedy (heurística de solución de referencia) ────────────────
-# Ordena generadores por costo BASE ascendente y asigna carga al más barato
-# primero. Con T=0 (sin penalización térmica), es el óptimo global.
-# Con T>0, el Greedy NO VE el término cuadrático en su decisión de asignación
-# → da solución SUBÓPTIMA. Esto justifica el GA con modelo de costo no-lineal.
-greedy_alloc, greedy_cost, greedy_kw, greedy_pct = greedy_dispatch(demand_val, temperature_val)
+# ── Paso 3: Despacho Voraz (heurística de referencia) ────────────────────────
+# Ordena generadores por costo BASE ascendente y asigna carga al más barato.
+# Con T=0 es el óptimo global; con T>0 da solución subóptima porque no ve
+# el término cuadrático → mayor Gap con el AG. Eso justifica el AG.
+asignacion_voraz, costo_voraz, potencia_voraz, porcentaje_voraz = \
+    despacho_voraz(demanda_kw, valor_temperatura)
 
 # ====================================================================
 # 4. RENDERIZADO DE LA INTERFAZ (llamadas a los módulos de UI)
 # ====================================================================
 
 # ── Sección A: Dashboard KPI (4 tarjetas métricas) ───────────────────────────
-gap_pct, gap_emoji = render_kpi_cards(demand_val, final_prod, final_cost, greedy_cost)
+brecha_pct, emoji_brecha = renderizar_tarjetas_kpi(
+    demanda_kw, potencia_ag, costo_ag, costo_voraz
+)
 
 # ── Sección B: Formulación matemática del modelo (expander colapsable) ────────
-render_math_formulas()
+renderizar_formulas_matematicas()
 
 st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
 
 # ── Sección C: Estado operativo de los 8 generadores (tarjetas HTML) ─────────
-render_generator_cards(best_chrom, allocation, GENERATORS, N_GENES)
+renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES)
 
 # ── Sección D: Gráfico de barras del clúster (% carga y kW por generador) ────
-plot_cluster_bars(best_chrom, allocation, GENERATORS, N_GENES, demand_val, final_prod)
-
-# ── Sección E: Gráfico de clúster estilo K-Means (nube de puntos) ────────────
-plot_cluster_kmeans(best_chrom, allocation, GENERATORS, N_GENES, final_prod, final_cost, gap_pct)
-
-st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
-
-# ── Sección F: Panel de Auditoría Matemática (convergencia + difuso) ─────────
-st.markdown("### 📊 Panel de Auditoría Matemática")
-st.caption("Evidencia de convergencia del GA y conjunto difuso activado — para defensa técnica universitaria.")
-
-c_conv, c_fuzzy = st.columns([1.3, 1])
-
-with c_conv:
-    plot_convergence(cost_history, gen_stopped, generations)
-
-with c_fuzzy:
-    plot_fuzzy_membership(demand_sim, demand_var, plot_fuzzy_result)
-
-st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
-
-# ── Sección G: Comparación GA vs. Greedy (barras dobles por generador) ────────
-plot_dispatch_comparison(
-    allocation, greedy_alloc, GENERATORS, N_GENES,
-    final_prod, greedy_kw, final_cost, greedy_cost,
-    gap_pct, gap_emoji, best_chrom
+graficar_cluster_barras(
+    mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES, demanda_kw, potencia_ag
 )
 
-# ── Sección H: Justificación académica del GA (expander colapsable) ───────────
-render_academic_expander(final_cost, greedy_cost, gap_pct, generations)
+# ── Sección E: Gráfico de clúster estilo K-Medias (nube de puntos) ────────────
+graficar_cluster_kmeans(
+    mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES,
+    potencia_ag, costo_ag, brecha_pct
+)
 
 st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
 
-# ── Sección I: Vector de decisión x* — GA vs. Greedy (tabla comparativa) ──────
-render_decision_vector(best_chrom, greedy_pct, N_GENES)
+# ── Sección F: Panel de Auditoría Matemática (convergencia + difuso) ──────────
+st.markdown("### 📊 Panel de Auditoría Matemática")
+st.caption(
+    "Evidencia de convergencia del AG y conjunto difuso activado — "
+    "para defensa técnica universitaria."
+)
+
+col_convergencia, col_difuso = st.columns([1.3, 1])
+
+with col_convergencia:
+    graficar_convergencia(historial_costo, gen_parada, num_generaciones)
+
+with col_difuso:
+    graficar_membresia_difusa(simulacion_difusa, var_demanda, graficar_resultado_difuso)
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ── Sección G: Comparación AG vs. Voraz (barras dobles por generador) ─────────
+graficar_comparacion_despacho(
+    asignacion, asignacion_voraz, GENERADORES, N_GENERADORES,
+    potencia_ag, potencia_voraz, costo_ag, costo_voraz,
+    brecha_pct, emoji_brecha, mejor_cromosoma
+)
+
+# ── Sección H: Justificación académica del AG (expander colapsable) ───────────
+renderizar_expander_academico(costo_ag, costo_voraz, brecha_pct, num_generaciones)
+
+st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+
+# ── Sección I: Vector de decisión x* — AG vs. Voraz (tabla comparativa) ───────
+renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES)
