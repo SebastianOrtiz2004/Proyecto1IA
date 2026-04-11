@@ -26,45 +26,73 @@ GENERATORS = np.array([
 # Dimensión del cromosoma (número de genes = número de generadores)
 N_GENES: int = len(GENERATORS)   # = 8
 
+# =====================================================================================
+# COEFICIENTES DE SENSIBILIDAD TÉRMICA (αⱼ)  — Modelo de Costo Cuadrático-Térmico
+# =====================================================================================
+# La temperatura exterior afecta la eficiencia de cada generador diésel de forma
+# diferente según su diseño, sistema de refrigeración y antigüedad.
+#
+# Modelo de costo extendido:
+#   Cⱼ(Pⱼ, T) = base_j × Pⱼ  +  αⱼ × (T/100) × Pⱼ²
+#               └── lineal ──┘   └──── cuadrático-térmico ────┘
+#
+# El término cuadrático NO SEPARA el problema → el Greedy lineal deja de ser óptimo.
+# El GA puede descubrir repartos óptimos de carga entre generadores porque evalúa
+# cromosomas completos, mientras el Greedy trabaja generador a generador.
+#
+# Convención de unidades: αⱼ en [USD / kW²]
+# Rango físico razonable: 0.0001 – 0.001  (el cuadrático sube ≤10% del costo base)
+# ──────────────────────────────────────────────────────────────────────────────────────
+THERMAL_COEFFS = np.array([
+    0.00050,   # Gen 1: $150/kW base — sensibilidad media     (refrigeración estándar)
+    0.00030,   # Gen 2: $100/kW base — sensibilidad moderada  (carga alta, buen cooling)
+    0.00080,   # Gen 3: $200/kW base — sensibilidad ALTA      (backup, peor disipación)
+    0.00020,   # Gen 4:  $80/kW base — sensibilidad BAJA      (base load, robusto)
+    0.00030,   # Gen 5:  $90/kW base — sensibilidad moderada  (alta capacidad)
+    0.00100,   # Gen 6: $250/kW base — sensibilidad MÁX.      (emergencia, sin cooling)
+    0.00040,   # Gen 7: $110/kW base — sensibilidad moderada  (flexible, rango medio)
+    0.00010,   # Gen 8:  $70/kW base — sensibilidad MÍNIMA    (más eficiente, mejor diseño)
+])
+
 
 # =====================================================================================
 # FUNCIÓN DE REFERENCIA: DESPACHO GREEDY ÓPTIMO
 # =====================================================================================
-def greedy_dispatch(demand: float):
+def greedy_dispatch(demand: float, temperature: float = 0.0):
     """
     Algoritmo Greedy de Despacho Económico — Solución de Referencia (Benchmark).
 
     ──────────────────────────────────────────────────────────────────────────────
-    TEOREMA DE OPTIMALIDAD (Principio de Optimalidad de Bellman):
+    COMPORTAMIENTO CON MODELO LINEAL (temperatura = 0):
     ──────────────────────────────────────────────────────────────────────────────
-    Para una función de costo lineal separable de la forma:
-        f(x) = Σ_{j} cᵢ · xⱼ  (cᵢ constante, xⱼ ≥ 0)
-    y una restricción de suma Σxⱼ ≥ D, la política óptima es:
-        → Asignar carga máxima al generador de menor costo unitario
-        → Continuar con el siguiente más barato hasta cubrir D
+    Para costo lineal f(x) = Σ base_j · Pⱼ, el Greedy es ÓPTIMO GLOBAL:
+        → Ordena por costo base ascendente y asigna carga de mayor a menor.
 
-    Esta es la solución ÓPTIMA GLOBAL garantizada para este tipo de problema.
-    Sirve como benchmark para evaluar la calidad de la metaheurística GA.
-
-    NOTA ACADÉMICA:
-    Si el modelo de costo fuera NO LINEAL (ej. cuadrático: aⱼ·Pⱼ² + bⱼ·Pⱼ + cⱼ),
-    el greedy deja de ser óptimo y el GA se justifica como necesidad, no solo
-    como alternativa. Esta es la motivación real de los métodos metaheurísticos
-    en problemas de Unit Commitment reales.
+    ──────────────────────────────────────────────────────────────────────────────
+    COMPORTAMIENTO CON MODELO CUADRÁTICO-TÉRMICO (temperatura > 0):
+    ──────────────────────────────────────────────────────────────────────────────
+    Con costo Cⱼ(Pⱼ,T) = base_j·Pⱼ + αⱼ·(T/100)·Pⱼ², el Greedy ordena por
+    costo marginal inicial (dC/dP|_{P=0} = base_j) e intenta asignar al más barato.
+    PERO el término cuadrático hace que el costo marginal AUMENTE con la carga:
+        dC/dP = base_j + 2·αⱼ·(T/100)·Pⱼ
+    El Greedy ignora este aumento → asigna demasiada carga al primer gen. y
+    rechaza repartos equitativos que serían más baratos. → SOLUCIÓN SUBÓPTIMA.
+    El GA no tiene esta limitación: evalúa el costo total del cromosoma completo.
     ──────────────────────────────────────────────────────────────────────────────
 
     Parameters
     ----------
-    demand : float — demanda en kW a satisfacer
+    demand      : float — demanda en kW a satisfacer
+    temperature : float — temperatura exterior en °C [0..100]
 
     Returns
     -------
     allocation : ndarray (8,) — kW asignados por generador
-    cost       : float        — costo total mínimo USD (óptimo global)
+    cost       : float        — costo total (con térmica si T>0)
     total_kw   : float        — potencia total despachada
     load_pct   : ndarray (8,) — porcentaje de carga por generador [0..100]
     """
-    # Ordenar generadores por costo ascendente (el más barato primero)
+    # Greedy ordena por costo base (no puede ver el término cuadrático a priori)
     priority_order = np.argsort(GENERATORS[:, 1])     # índices: [7,3,4,1,6,0,2,5]
 
     allocation = np.zeros(N_GENES)
@@ -73,15 +101,19 @@ def greedy_dispatch(demand: float):
     for idx in priority_order:
         if remaining <= 0:
             break
-        # Asignar mínimo entre lo que queda por cubrir y la capacidad máxima del gen.
         assigned_kw      = min(remaining, GENERATORS[idx, 0])
         allocation[idx]  = assigned_kw
         remaining       -= assigned_kw
 
     total_kw = float(np.sum(allocation))
-    cost     = float(np.sum(allocation * GENERATORS[:, 1]))
 
-    # Convertir kW a % de carga (redondeado a entero, como el cromosoma GA)
+    # Costo usando el MISMO modelo térmico-cuadrático que el GA (para comparación justa)
+    T_norm  = temperature / 100.0
+    cost    = float(
+        np.sum(allocation * GENERATORS[:, 1])              # término lineal base
+        + np.sum(THERMAL_COEFFS * T_norm * allocation**2)  # término cuadrático térmico
+    )
+
     with np.errstate(divide='ignore', invalid='ignore'):
         load_pct = np.where(
             GENERATORS[:, 0] > 0,
@@ -96,58 +128,76 @@ def greedy_dispatch(demand: float):
 # =====================================================================================
 # EVALUACIÓN DE FITNESS (Función Objetivo + Penalización)
 # =====================================================================================
-def evaluate_fitness(population: np.ndarray, demand: float):
+def evaluate_fitness(population: np.ndarray, demand: float, temperature: float = 0.0):
     """
-    Evaluador de la Función Objetivo con Penalización Asimétrica.
+    Evaluador de la Función Objetivo con Penalización Asimétrica y Costo Térmico.
 
     ──────────────────────────────────────────────────────────────────
-    FORMULACIÓN MATEMÁTICA (Investigación de Operaciones):
+    MODELO DE COSTO CUADRÁTICO-TÉRMICO:
     ──────────────────────────────────────────────────────────────────
-    Minimizar:   f(x) = Σ_{j=1}^{8} [ frac_j · Cap_j · Costo_j ] + P(x)
+    La temperatura exterior T degrada la eficiencia de cada generador j
+    de forma distinta según su coeficiente de sensibilidad térmica αⱼ.
 
-    Restricción dura (g):
-        g(x): Σ_{j=1}^{8} [ frac_j · Cap_j ] ≥ Demanda
+    Función de costo extendida:
+        Cⱼ(Pⱼ, T) = base_j · Pⱼ  +  αⱼ · (T/100) · Pⱼ²
+                    └─ lineal ─┘   └──── cuadrático-térmico ─────┘
 
-    Función de Penalización Asimétrica (Exterior Penalty Method):
-        P(x) = 0                          si g(x) se cumple
-        P(x) = 1×10⁶ + déficit×1000      si g(x) se viola
+    Costo total del cromosoma x:
+        f(x, T) = Σⱼ [ base_j · Pⱼ  +  αⱼ · (T/100) · Pⱼ² ]
 
-    Propiedades de la penalización:
-        ① max(P) ≈ 1e6 + 2950×1000 ≈ 3.95×10⁶  >>  max(f_real) ≈ 737,500
-        → Toda solución infactible es SIEMPRE peor que cualquier solución factible.
-        ② La componente 1e6 es el "salto de barrera" que separa los espacios.
-        ③ El término déficit×1000 ordena infactibles por gravedad del déficit.
+    POR QUÉ EL GA ES NECESARIO CON ESTE MODELO:
+        - El término αⱼ·(T/100)·Pⱼ² rompe la separabilidad lineal del problema.
+        - La solución óptima puede requerir repartir carga entre generadores
+          (en lugar de maximizar el más barato), para minimizar el total de Pⱼ².
+        - El Greedy ordena por base_j (costo marginal en P=0) pero ignora que
+          el costo marginal real crece con la carga: dC/dP = base_j + 2αⱼ(T/100)Pⱼ.
+        - El GA evalúa el costo TOTAL del cromosoma completo → puede descubrir
+          repartos óptimos que el Greedy descarta.
+
+    FORMULACIÓN COMPLETA CON PENALIZACIÓN:
+        Minimizar:  f(x,T) + P(x)
+        P(x) = 0                       si Σ Pⱼ ≥ Demanda
+        P(x) = 1×10⁶ + déficit×1000   si Σ Pⱼ < Demanda
     ──────────────────────────────────────────────────────────────────
 
     Parameters
     ----------
-    population : ndarray (N, 8) — N cromosomas, cada gen ∈ {0..100} (% carga)
-    demand     : float          — demanda en kW (salida del FIS Mamdani)
+    population  : ndarray (N, 8) — N cromosomas, cada gen ∈ {0..100} (% carga)
+    demand      : float          — demanda en kW (salida del FIS Mamdani)
+    temperature : float          — temperatura exterior en °C [0..100]
 
     Returns
     -------
-    fitness   : ndarray (N,)   — valor f(x) por cromosoma (a minimizar)
-    costs     : ndarray (N,)   — costo operativo LIMPIO (sin penalización)
-    total_kw  : ndarray (N,)   — potencia total entregada por cromosoma
-    kw_gen    : ndarray (N, 8) — kW asignados por generador por cromosoma
+    fitness  : ndarray (N,)   — valor f(x,T) + P(x) por cromosoma (a minimizar)
+    costs    : ndarray (N,)   — costo operativo LIMPIO con térmica (sin penalización)
+    total_kw : ndarray (N,)   — potencia total entregada por cromosoma
+    kw_gen   : ndarray (N, 8) — kW asignados por generador por cromosoma
     """
     # 1. Alelos enteros [0,100] → fracción decimal [0.0, 1.0]
-    frac = population / 100.0                               # (N, 8)
+    frac = population / 100.0                                   # (N, 8)
 
-    # 2. Potencia aportada: Broadcasting implícito (N,8) × (8,) → (N,8)
-    kw_gen = frac * GENERATORS[:, 0]                        # (N, 8)
+    # 2. Potencia aportada por generador: P_j = frac_j × Cap_j
+    kw_gen = frac * GENERATORS[:, 0]                            # (N, 8)
 
-    # 3. Costo operativo: Σ_j(kW_j × USD/kW_j) por cromosoma
-    costs = np.sum(kw_gen * GENERATORS[:, 1], axis=1)       # (N,)
+    # 3. Costo lineal base: Σ_j(P_j × base_j)
+    linear_costs = np.sum(kw_gen * GENERATORS[:, 1], axis=1)   # (N,)
 
-    # 4. Potencia total entregada por cromosoma
-    total_kw = np.sum(kw_gen, axis=1)                       # (N,)
+    # 4. Penalización térmica cuadrática: Σ_j(αⱼ × (T/100) × P_j²)
+    #    Broadcasting: THERMAL_COEFFS (8,) × kw_gen² (N,8) → suma → (N,)
+    T_norm = temperature / 100.0
+    thermal_costs = np.sum(THERMAL_COEFFS * T_norm * kw_gen**2, axis=1)  # (N,)
 
-    # 5. Penalización asimétrica vectorizada — sin ciclos for
+    # 5. Costo total con modelo térmico
+    costs = linear_costs + thermal_costs                        # (N,)
+
+    # 6. Potencia total entregada por cromosoma
+    total_kw = np.sum(kw_gen, axis=1)                          # (N,)
+
+    # 7. Penalización asimétrica por déficit de demanda (vectorizada)
     deficit = demand - total_kw
     penalty = np.where(deficit > 0, 1e6 + deficit * 1000.0, 0.0)
 
-    fitness = costs + penalty                                # (N,)
+    fitness = costs + penalty                                   # (N,)
 
     return fitness, costs, total_kw, kw_gen
 
@@ -157,6 +207,7 @@ def evaluate_fitness(population: np.ndarray, demand: float):
 # =====================================================================================
 def run_genetic_algorithm(
     demand:        float,
+    temperature:   float = 0.0,
     pop_size:      int   = 60,
     generations:   int   = 100,
     mutation_rate: float = 0.10,
@@ -196,6 +247,7 @@ def run_genetic_algorithm(
     Parameters
     ----------
     demand        : float — demanda en kW (del FIS Mamdani)
+    temperature   : float — temperatura exterior en °C [0..100] (afecta el costo cuadrático)
     pop_size      : int   — tamaño de población N
     generations   : int   — máximo de generaciones t_max
     mutation_rate : float — probabilidad de mutación por gen μ ∈ (0,1)
@@ -205,7 +257,7 @@ def run_genetic_algorithm(
     -------
     best_chromosome : ndarray (8,)  — cromosoma óptimo (% de carga)
     best_allocation : ndarray (8,)  — kW por generador
-    best_cost       : float         — costo USD (sin penalización)
+    best_cost       : float         — costo USD con modelo térmico (sin penalización)
     best_kw         : float         — potencia total kW
     fitness_history : list[float]   — min fitness(t) con penalización
     cost_history    : list[float]   — min costo limpio(t); NaN si gen. infactible
@@ -230,7 +282,7 @@ def run_genetic_algorithm(
     for gen in range(generations):
 
         # ── FASE A: EVALUACIÓN FENOTÍPICA ────────────────────────────────────
-        fitness, costs, total_kw, _ = evaluate_fitness(population, demand)
+        fitness, costs, total_kw, _ = evaluate_fitness(population, demand, temperature)
 
         # ── ELITISMO: Preservar top-k ANTES de modificar la población ────────
         # Ordenamos ascendente (menor fitness = individuo más apto)
@@ -324,7 +376,7 @@ def run_genetic_algorithm(
 
     # ── POST-CONVERGENCIA: Extraer el cromosoma óptimo ──────────────────────────
     final_fitness, final_costs, final_total_kw, final_kw_alloc = \
-        evaluate_fitness(population, demand)
+        evaluate_fitness(population, demand, temperature)
 
     best_idx = np.argmin(final_fitness)
 
