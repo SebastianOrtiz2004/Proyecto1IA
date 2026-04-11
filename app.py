@@ -390,6 +390,111 @@ st.caption(
     "⬜ Gris: apagado por el optimizador"
 )
 
+# ── Gráfico de Clúster estilo K-Means ────────────────────────────────────────
+# Los generadores se agrupan en 3 CLÚSTERES por costo unitario (perfil económico).
+# Para cada clúster se genera una nube de ~60 puntos dispersos alrededor del
+# centroide (media de costo y capacidad del grupo), usando distribución normal.
+# Los puntos representan la variabilidad del espacio de estados operativos.
+# Las ESTRELLAS grandes indican los generadores reales del sistema.
+st.markdown("#### 🔵 Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Means)")
+st.caption(
+    "Cada nube de puntos representa un clúster de generadores con costo operativo similar. "
+    "La **estrella ⭐** indica el generador real activo; el **círculo abierto** indica apagado. "
+    "El GA siempre prioriza el clúster 🟢 verde (más económico)."
+)
+
+# Semilla fija: la nube no varía en cada rerun del simulador
+rng_km = np.random.default_rng(seed=42)
+
+# Definición de los 3 clústeres con paleta visual
+CLUSTERS_KM = [
+    {"nombre": "Clúster 1 — Eficientes",  "indices": [3, 4, 7], "color": "#2ecc71", "rgba": "rgba(46,204,113,0.50)",  "n": 65},
+    {"nombre": "Clúster 2 — Moderados",   "indices": [1, 6],    "color": "#f1c40f", "rgba": "rgba(241,196,15,0.50)", "n": 50},
+    {"nombre": "Clúster 3 — Costosos",    "indices": [0, 2, 5], "color": "#e74c3c", "rgba": "rgba(231,76,60,0.50)",  "n": 65},
+]
+
+fig_km = go.Figure()
+max_kw_km = max(float(allocation[i]) for i in range(N_GENES)) or 1
+
+for c in CLUSTERS_KM:
+    idx = c["indices"]
+    # Centroide: media de costo (X) y capacidad (Y) de los generadores del clúster
+    cx = np.mean([GENERATORS[i, 1] for i in idx])
+    cy = np.mean([GENERATORS[i, 0] for i in idx])
+    # Dispersión proporcional al rango del clúster + margen base
+    sx = np.std([GENERATORS[i, 1] for i in idx]) + 8
+    sy = np.std([GENERATORS[i, 0] for i in idx]) + 55
+    # Nube de puntos normalmente distribuida alrededor del centroide
+    cx_pts = rng_km.normal(cx, sx, c["n"])
+    cy_pts = rng_km.normal(cy, sy, c["n"])
+
+    # Traza 1: nube de puntos del clúster (puntos pequeños, sin hover)
+    fig_km.add_trace(go.Scatter(
+        x=cx_pts, y=cy_pts,
+        mode='markers',
+        name=c["nombre"],
+        marker=dict(size=7, color=c["rgba"], line=dict(color=c["color"], width=0.8)),
+        hoverinfo='skip',
+        showlegend=True,
+    ))
+
+    # Traza 2: generadores reales (estrella = activo, círculo abierto = apagado)
+    for i in idx:
+        activo = best_chrom[i] > 0
+        fig_km.add_trace(go.Scatter(
+            x=[GENERATORS[i, 1]],
+            y=[GENERATORS[i, 0]],
+            mode='markers+text',
+            showlegend=False,
+            marker=dict(
+                size=20 if activo else 13,
+                color=c["color"] if activo else 'rgba(100,100,110,0.6)',
+                symbol='star' if activo else 'circle-open',
+                line=dict(color='white' if activo else '#555', width=1.5),
+                opacity=1.0 if activo else 0.6,
+            ),
+            text=[f"<b>G{i+1}</b>"],
+            textposition='top center',
+            textfont=dict(color='white', size=10, family='Arial Black'),
+            hovertext=(
+                f"<b>Gen {i+1}</b><br>"
+                f"Clúster: {c['nombre']}<br>"
+                f"Capacidad: {int(GENERATORS[i,0])} kW<br>"
+                f"Costo unitario: ${int(GENERATORS[i,1])}/kW<br>"
+                f"kW asignados: {float(allocation[i]):.1f}<br>"
+                f"Carga: {int(best_chrom[i])}%<br>"
+                f"Costo parcial: ${float(allocation[i])*GENERATORS[i,1]:,.0f}<br>"
+                f"Estado: {'⭐ OPERANDO' if activo else '⚫ APAGADO'}"
+            ),
+            hoverinfo='text',
+        ))
+
+fig_km.update_layout(
+    template='plotly_dark',
+    plot_bgcolor='#0f1319',
+    paper_bgcolor='#0e1117',
+    font=dict(color='#ddd', family='Arial'),
+    height=470,
+    margin=dict(l=30, r=30, t=75, b=70),
+    title=dict(
+        text=(
+            f"Clúster de Generadores (K-Means)  ·  "
+            f"Despacho GA: <b>{final_prod:.0f} kW</b>  ·  "
+            f"Costo: <b>${final_cost:,.0f}</b>  ·  Gap vs Greedy: <b>{gap_pct:.1f}%</b>"
+        ),
+        x=0.5, xanchor='center', font=dict(size=13, color='#eee')
+    ),
+    xaxis=dict(title='Costo Operativo Unitario (USD/kW)', gridcolor='#1a1f2e', zeroline=False, color='#888', tickprefix='$'),
+    yaxis=dict(title='Capacidad Máxima (kW)', gridcolor='#1a1f2e', zeroline=False, color='#888'),
+    legend=dict(orientation='h', y=-0.20, x=0.5, xanchor='center', font=dict(size=11, color='#ccc'), bgcolor='rgba(0,0,0,0)'),
+)
+
+st.plotly_chart(fig_km, use_container_width=True)
+st.caption(
+    "⭐ Estrella grande = generador activo  |  ○ Círculo = apagado por el AG  |  "
+    "🟢 Eficientes ($70–$90/kW)  ·  🟡 Moderados ($100–$110/kW)  ·  🔴 Costosos ($150–$250/kW)"
+)
+
 st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
 
 # ====================================================================
