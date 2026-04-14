@@ -133,12 +133,12 @@ def renderizar_tarjetas_kpi(demanda_kw, potencia_ag, costo_ag, costo_voraz):
     """
     col1, col2, col3, col4 = st.columns(4)
 
-    # ── KPI 1: Demanda SID ────────────────────────────────────────────────────
+    # ── KPI 1: Inyección de Conocimiento (SID) ────────────────────────────────
     col1.markdown(f"""
 <div class='tarjeta-kpi'>
-    <div style='color:#00ffcc;'>🧠 <b>Demanda Estimada (SID Mamdani)</b></div>
+    <div style='color:#00ffcc;'>🧠 <b>Inyección Apriori (Demanda SID)</b></div>
     <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>{demanda_kw:.1f} kW</div>
-    <div style='font-size:0.8rem;color:#888;'>Centroide defuzzificado · 9 reglas AND</div>
+    <div style='font-size:0.8rem;color:#888;'>Conocimiento extraído del dataset histórico</div>
 </div>""", unsafe_allow_html=True)
 
     # ── KPI 2: Potencia AG ────────────────────────────────────────────────────
@@ -161,16 +161,16 @@ def renderizar_tarjetas_kpi(demanda_kw, potencia_ag, costo_ag, costo_voraz):
     <div style='font-size:0.8rem;color:#888;'>Incluye penalización térmica</div>
 </div>""", unsafe_allow_html=True)
 
-    # ── KPI 4: Referencia Voraz + Brecha ─────────────────────────────────────
+    # ── KPI 4: Heurística Greedy (Benchmark) ──────────────────────────────────
     brecha_pct  = ((costo_ag - costo_voraz) / costo_voraz * 100) if costo_voraz > 0 else 0
     color_brecha = "#00ffcc" if brecha_pct <= 5 else ("#f2c94c" if brecha_pct <= 15 else "#ff3366")
     emoji_brecha = "🟢"      if brecha_pct <= 5 else ("🟡"      if brecha_pct <= 15 else "🔴")
 
     col4.markdown(f"""
 <div class='tarjeta-kpi' style='border-left-color:{color_brecha};'>
-    <div style='color:{color_brecha};'>📐 <b>Referencia Voraz (benchmark)</b></div>
+    <div style='color:{color_brecha};'>📐 <b>Heurística Greedy (Benchmark)</b></div>
     <div style='font-size:2.2rem;font-weight:bold;color:#fff;'>${costo_voraz:,.0f}</div>
-    <div style='font-size:0.85rem;color:#ccc;'>{emoji_brecha} Brecha AG: <b>+{brecha_pct:.1f}%</b> sobre referencia</div>
+    <div style='font-size:0.85rem;color:#ccc;'>{emoji_brecha} Diferencial AG: <b>{brecha_pct:+.1f}%</b></div>
 </div>""", unsafe_allow_html=True)
 
     return brecha_pct, emoji_brecha
@@ -285,19 +285,10 @@ def renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_
 # ====================================================================
 def renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES):
     """
-    Expander que muestra la tabla comparativa del cromosoma óptimo del AG
-    (vector de decisión x*) vs. la solución del algoritmo Voraz.
-
-    El color del valor indica si el generador está activo (verde/azul)
-    o apagado (gris).
-
-    Parámetros
-    ----------
-    mejor_cromosoma  : ndarray (8,) — genes óptimos del AG (% de carga)
-    porcentaje_voraz : ndarray (8,) — porcentajes del despacho Voraz
-    N_GENERADORES    : int          — número de generadores
+    Expander que muestra el Vector de Estado Óptimo (x*) comparando
+    el despacho AG frente a la heurística de referencia.
     """
-    with st.expander("🔬 Cromosoma óptimo x* (vector de decisión AG) vs. Algoritmo Voraz"):
+    with st.expander("🔬 Vector de Estado Óptimo (x*) vs. Heurística Greedy"):
         # Fila de encabezados
         cols_encabezado = st.columns([2] + [1]*N_GENERADORES)
         cols_encabezado[0].markdown("**Método**")
