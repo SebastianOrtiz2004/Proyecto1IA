@@ -238,7 +238,8 @@ def ejecutar_ag(
     tam_poblacion:  int   = 60,
     generaciones:   int   = 100,
     tasa_mutacion:  float = 0.10,
-    num_elites:     int   = 2
+    num_elites:     int   = 2,
+    modo_rafaga:    bool  = False
 ):
     """
     Algoritmo Genético — Python puro (sin librerías externas de cálculo).
@@ -281,6 +282,11 @@ def ejecutar_ag(
 
     historial_aptitud: list = []   # aptitud mínima(t) — incluye penalización
     historial_costo:   list = []   # costo mínimo limpio(t) — nan si sin solución válida
+
+    # ── MODO RÁFAGA: Optimización de recursos para procesamiento por lotes ──
+    if modo_rafaga:
+        tam_poblacion = min(tam_poblacion, 35)
+        generaciones = min(generaciones, 45)
 
     # ── Criterio de parada por estancamiento ────────────────────────────────
     # Si la aptitud mínima no mejora en PACIENCIA generaciones consecutivas,

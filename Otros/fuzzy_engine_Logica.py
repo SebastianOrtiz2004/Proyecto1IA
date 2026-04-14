@@ -24,9 +24,8 @@ Defuzzificación por Centroide (Centro de Gravedad):
 ──────────────────────────────────────────────────────────────────────────────
 """
 
-import matplotlib
-matplotlib.use('Agg')   # Evita conflictos de hilo con Streamlit
 import matplotlib.pyplot as plt
+from data_mining import minar_reglas_proyecto
 
 
 # ============================================================================
@@ -100,19 +99,19 @@ def construir_sistema_difuso():
 
     # ── 2. FUNCIONES DE PERTENENCIA TRIANGULARES ────────────────────────
     # Antecedente 1: Temperatura (a, b, c)
-    #   frio(0,0,45)   normal(30,50,70)   caliente(55,100,100)
+    # Acorde a data_mining.py: <20 Frío, [20-30] Normal, >30 Caliente
     mfs_temp = {
-        'frio':     (0,   0,   45),
-        'normal':   (30,  50,  70),
-        'caliente': (55, 100, 100),
+        'frio':     (0,   10,  22),
+        'normal':   (18,  25,  32),
+        'caliente': (28,  40, 100),
     }
 
     # Antecedente 2: Producción (a, b, c)
-    #   bajo(0,0,45)   medio(30,50,70)   alto(55,100,100)
+    # Acorde a data_mining.py: <40 Bajo, [40-70] Medio, >70 Alto
     mfs_prod = {
-        'bajo':  (0,   0,   45),
-        'medio': (30,  50,  70),
-        'alto':  (55, 100, 100),
+        'bajo':  (0,   20,  45),
+        'medio': (35,  55,  75),
+        'alto':  (65,  85, 100),
     }
 
     # Consecuente: Demanda kW (a, b, c)
@@ -136,20 +135,24 @@ def construir_sistema_difuso():
     # Formato de cada regla: (conjunto_produccion, conjunto_temperatura, conjunto_demanda)
     # T-norma AND = mín(μ_prod, μ_temp)  →  lógica Mamdani estricta
     # ─────────────────────────────────────────────────────────────────────
-    reglas = [
-        # Bloque 1: Producción ALTA → demanda siempre ALTA
-        ('alto',  'frio',     'alta'),
-        ('alto',  'normal',   'alta'),
-        ('alto',  'caliente', 'alta'),
-        # Bloque 2: Producción MEDIA → demanda varía con temperatura
-        ('medio', 'frio',     'baja'),
-        ('medio', 'normal',   'media'),
-        ('medio', 'caliente', 'alta'),
-        # Bloque 3: Producción BAJA → demanda generalmente baja
-        ('bajo',  'frio',     'baja'),
-        ('bajo',  'normal',   'baja'),
-        ('bajo',  'caliente', 'media'),
-    ]
+    # ── 3. BASE DE REGLAS MAMDANI (DINÁMICA — MINADA CON APRIORI) ───────
+    # Extraer reglas del dataset usando el algoritmo Apriori
+    reglas_minadas = minar_reglas_proyecto()
+    
+    # Convertir formato del minador a formato del motor difuso (tuplas)
+    reglas = []
+    for r in reglas_minadas:
+        # El minador devuelve: {'temp': 'normal', 'prod': 'alto', 'dem': 'alta', ...}
+        # El motor espera: (conjunto_produccion, conjunto_temperatura, conjunto_demanda)
+        reglas.append((r['prod'], r['temp'], r['dem']))
+
+    # Fallback de seguridad: si Apriori no encuentra nada, usar base mínima
+    if not reglas:
+        reglas = [
+            ('medio', 'normal', 'media'),
+            ('alto',  'normal', 'alta'),
+            ('bajo',  'normal', 'baja')
+        ]
 
     sistema = {
         'universo_temp': universo_temp,
@@ -159,6 +162,7 @@ def construir_sistema_difuso():
         'mfs_prod':      mfs_prod,
         'mfs_dem':       mfs_dem,
         'reglas':        reglas,
+        'reglas_detalles': reglas_minadas # Guardar detalles para la UI
     }
 
     # Retorna (sistema, None) para mantener la interfaz:

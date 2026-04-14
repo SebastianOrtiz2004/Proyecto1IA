@@ -459,3 +459,37 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
     st.plotly_chart(figura, use_container_width=True)
+
+
+# ====================================================================
+# GRÁFICO 6: ANÁLISIS HISTÓRICO DEL DATASET (100 MUESTRAS)
+# ====================================================================
+def graficar_analisis_dataset(resultados):
+    """
+    Renderiza dos gráficos de serie temporal para el análisis del dataset:
+      1. Comparación de Demanda (Real vs. Estimada por SID)
+      2. Evolución del Costo Optimizado por el AG
+    """
+    ids = [r['id'] for r in resultados]
+    dem_real = [r['dem_real'] for r in resultados]
+    dem_est = [r['dem_est'] for r in resultados]
+    costos = [r['costo'] for r in resultados]
+
+    figura = make_subplots(rows=2, cols=1, 
+                          subplot_titles=("Comparación de Demanda: Real vs SID", "Costo Operativo Optimizado (AG)"),
+                          vertical_spacing=0.15)
+
+    # Gráfico 1: Demanda
+    figura.add_trace(go.Scatter(x=ids, y=dem_real, name="Demanda Real", line=dict(color='#ff6b6b', width=2)), row=1, col=1)
+    figura.add_trace(go.Scatter(x=ids, y=dem_est, name="Demanda SID", line=dict(color='#00ffcc', width=2, dash='dot')), row=1, col=1)
+
+    # Gráfico 2: Costo
+    figura.add_trace(go.Scatter(x=ids, y=costos, name="Costo USD", fill='tozeroy', line=dict(color='#f2c94c')), row=2, col=1)
+
+    figura.update_layout(height=600, template='plotly_dark', plot_bgcolor='#111', paper_bgcolor='#0e1117',
+                        margin=dict(t=50, b=50), showlegend=True)
+    figura.update_xaxes(title="Muestra (Hora)", row=2, col=1)
+    figura.update_yaxes(title="kW", row=1, col=1)
+    figura.update_yaxes(title="USD", row=2, col=1)
+
+    st.plotly_chart(figura, use_container_width=True)
