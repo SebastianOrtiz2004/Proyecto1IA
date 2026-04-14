@@ -51,6 +51,96 @@ st.set_page_config(
 def obtener_sistema_difuso():
     return construir_sistema_difuso()
 
+@st.cache_data(show_spinner=False)
+def procesar_dataset_historico(ruta_csv_str: str):
+    """Procesa el histórico una vez y reutiliza resultados en reruns."""
+    sistema, _ = obtener_sistema_difuso()
+    ruta_csv = Path(ruta_csv_str)
+
+    resultados = []
+    last_sim_fuzzy = None
+    last_h_cost = []
+    last_g_st = 0
+    last_mejor_c = [0] * N_GENERADORES
+    last_asig = [0.0] * N_GENERADORES
+    last_pot = 0.0
+    last_cost = 0.0
+    last_d_est = 0.0
+    last_costo_voraz = 0.0
+    estadisticas_reglas = {
+        (prod, temp, dem): {"activaciones": 0, "suma_grado": 0.0}
+        for prod, temp, dem in sistema['reglas']
+    }
+
+    if not ruta_csv.exists():
+        return {
+            "ok": False,
+            "mensaje_error": "Archivo historico_planta.csv no encontrado.",
+            "sistema": sistema,
+            "resultados": resultados,
+            "last_sim_fuzzy": last_sim_fuzzy,
+            "last_h_cost": last_h_cost,
+            "last_g_st": last_g_st,
+            "last_mejor_c": last_mejor_c,
+            "last_asig": last_asig,
+            "last_pot": last_pot,
+            "last_cost": last_cost,
+            "last_d_est": last_d_est,
+            "last_costo_voraz": last_costo_voraz,
+            "estadisticas_reglas": estadisticas_reglas,
+        }
+
+    with open(ruta_csv, mode='r', encoding='utf-8') as f:
+        reader = list(csv.DictReader(f))
+        for i, fila in enumerate(reader):
+            try:
+                t = float(fila['Temperatura_Ambiente_C'])
+                p = float(fila['Carga_Industrial_Pct'])
+                d_real = float(fila['Demanda_Real_kW'])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            d_est, sim_f = estimar_demanda(sistema, None, t, p)
+            for prod_r, temp_r, dem_r in sistema['reglas']:
+                grado = min(
+                    sim_f['mu_temp'].get(temp_r, 0.0),
+                    sim_f['mu_prod'].get(prod_r, 0.0),
+                )
+                if grado > 0:
+                    clave = (prod_r, temp_r, dem_r)
+                    estadisticas_reglas[clave]["activaciones"] += 1
+                    estadisticas_reglas[clave]["suma_grado"] += grado
+
+            mejor_c, asig, cost, pot, h_apt, h_cost, g_st = ejecutar_ag(
+                demanda=d_est, temperatura=t, tam_poblacion=30,
+                generaciones=30, modo_rafaga=True
+            )
+            _, costo_voraz, _, _ = despacho_voraz(d_est, t)
+            resultados.append({
+                'id': i + 1, 'temp': t, 'prod': p, 'dem_real': d_real,
+                'dem_est': d_est, 'costo': cost, 'costo_voraz': costo_voraz
+            })
+            last_sim_fuzzy, last_h_cost, last_g_st = sim_f, h_cost, g_st
+            last_mejor_c, last_asig, last_pot, last_cost, last_d_est = mejor_c, asig, pot, cost, d_est
+            last_costo_voraz = costo_voraz
+
+    return {
+        "ok": True,
+        "mensaje_error": "",
+        "sistema": sistema,
+        "resultados": resultados,
+        "last_sim_fuzzy": last_sim_fuzzy,
+        "last_h_cost": last_h_cost,
+        "last_g_st": last_g_st,
+        "last_mejor_c": last_mejor_c,
+        "last_asig": last_asig,
+        "last_pot": last_pot,
+        "last_cost": last_cost,
+        "last_d_est": last_d_est,
+        "last_costo_voraz": last_costo_voraz,
+        "estadisticas_reglas": estadisticas_reglas,
+    }
+
 # ── Inyectar CSS global y renderizar encabezado ───────────────────────────────
 inyectar_css()
 renderizar_encabezado()
@@ -183,54 +273,24 @@ else:
     st.markdown("### Pipeline de Auditoría de IA sobre Dataset Histórico")
     
     ruta_csv = Path(__file__).resolve().parent / "DataSet" / "historico_planta.csv"
-    resultados = []
-    last_sim_fuzzy = None
-    last_h_cost = []
-    last_g_st = 0
-    last_mejor_c = [0] * N_GENERADORES
-    last_asig = [0.0] * N_GENERADORES
-    last_pot = 0.0
-    last_cost = 0.0
-    last_d_est = 0.0
-    last_costo_voraz = 0.0
-    estadisticas_reglas = {
-        (prod, temp, dem): {"activaciones": 0, "suma_grado": 0.0}
-        for prod, temp, dem in sistema_control['reglas']
-    }
-    
     with st.spinner("Procesando 100 muestras histórico..."):
-        if ruta_csv.exists():
-            with open(ruta_csv, mode='r', encoding='utf-8') as f:
-                reader = list(csv.DictReader(f))
-                for i, fila in enumerate(reader):
-                    try:
-                        t = float(fila['Temperatura_Ambiente_C'])
-                        p = float(fila['Carga_Industrial_Pct'])
-                        d_real = float(fila['Demanda_Real_kW'])
-                    except (KeyError, TypeError, ValueError):
-                        continue
-                    d_est, sim_f = estimar_demanda(sistema_control, None, t, p)
-                    for prod_r, temp_r, dem_r in sistema_control['reglas']:
-                        grado = min(
-                            sim_f['mu_temp'].get(temp_r, 0.0),
-                            sim_f['mu_prod'].get(prod_r, 0.0),
-                        )
-                        if grado > 0:
-                            clave = (prod_r, temp_r, dem_r)
-                            estadisticas_reglas[clave]["activaciones"] += 1
-                            estadisticas_reglas[clave]["suma_grado"] += grado
+        salida_dataset = procesar_dataset_historico(str(ruta_csv))
 
-                    mejor_c, asig, cost, pot, h_apt, h_cost, g_st = ejecutar_ag(
-                        demanda=d_est, temperatura=t, tam_poblacion=30, 
-                        generaciones=30, modo_rafaga=True
-                    )
-                    resultados.append({'id': i+1, 'temp': t, 'prod': p, 'dem_real': d_real, 'dem_est': d_est, 'costo': cost})
-                    last_sim_fuzzy, last_h_cost, last_g_st = sim_f, h_cost, g_st
-                    last_mejor_c, last_asig, last_pot, last_cost, last_d_est = mejor_c, asig, pot, cost, d_est
-                    _, costo_voraz, _, _ = despacho_voraz(d_est, t)
-                    last_costo_voraz = costo_voraz
-        else:
-            st.error("Archivo historico_planta.csv no encontrado.")
+    sistema_control = salida_dataset["sistema"]
+    resultados = salida_dataset["resultados"]
+    last_sim_fuzzy = salida_dataset["last_sim_fuzzy"]
+    last_h_cost = salida_dataset["last_h_cost"]
+    last_g_st = salida_dataset["last_g_st"]
+    last_mejor_c = salida_dataset["last_mejor_c"]
+    last_asig = salida_dataset["last_asig"]
+    last_pot = salida_dataset["last_pot"]
+    last_cost = salida_dataset["last_cost"]
+    last_d_est = salida_dataset["last_d_est"]
+    last_costo_voraz = salida_dataset["last_costo_voraz"]
+    estadisticas_reglas = salida_dataset["estadisticas_reglas"]
+
+    if not salida_dataset["ok"]:
+        st.error(salida_dataset["mensaje_error"])
 
     # Pestañas Auditoría
     tab1, tab2, tab3, tab4 = st.tabs(["Minería", "Inferencia", "Optimización", "Resultados"])
@@ -255,6 +315,7 @@ else:
 
     with tab2:
         st.markdown("#### Comportamiento del Motor Difuso")
+        st.caption("Visualización correspondiente a la última muestra histórica procesada.")
         if last_sim_fuzzy is not None:
             graficar_membresia_difusa(last_sim_fuzzy, None, graficar_resultado_difuso)
         else:
@@ -262,13 +323,14 @@ else:
 
     with tab3:
         st.markdown("#### Eficiencia Evolutiva")
+        st.caption("Curva evolutiva correspondiente a la última optimización ejecutada sobre el histórico.")
         if last_h_cost:
             graficar_convergencia(last_h_cost, last_g_st, 30)
         else:
             st.warning("No hay historial evolutivo disponible.")
 
     with tab4:
-        st.markdown("#### Dashboard Consolidad")
+        st.markdown("#### Dashboard Consolidado")
         if resultados:
             renderizar_tarjetas_kpi(last_d_est, last_pot, last_cost, last_costo_voraz)
             # Métricas de validación para defensa: error del SID y desempeño AG.
@@ -278,11 +340,11 @@ else:
                 sum((abs(r['dem_real'] - r['dem_est']) / r['dem_real']) for r in resultados if r['dem_real'] != 0)
                 / max(1, sum(1 for r in resultados if r['dem_real'] != 0))
             ) * 100
-            brechas = []
-            for r in resultados:
-                _, costo_voraz_muestra, _, _ = despacho_voraz(r['dem_est'], r['temp'])
-                if costo_voraz_muestra > 0:
-                    brechas.append(((r['costo'] - costo_voraz_muestra) / costo_voraz_muestra) * 100)
+            brechas = [
+                ((r['costo'] - r['costo_voraz']) / r['costo_voraz']) * 100
+                for r in resultados
+                if r['costo_voraz'] > 0
+            ]
             brecha_prom = (sum(brechas) / len(brechas)) if brechas else 0.0
             c_a, c_b, c_c = st.columns(3)
             c_a.metric("MAE SID", f"{mae_sid:.1f} kW")
