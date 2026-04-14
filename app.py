@@ -20,9 +20,6 @@ Arquitectura del proyecto:
 """
 
 import streamlit as st
-import matplotlib
-matplotlib.use('Agg')   # Modo sin ventana para evitar errores de hilo
-import matplotlib.pyplot as plt
 
 # ── Módulos propios del proyecto ──────────────────────────────────────────────
 from fuzzy_engine import (
@@ -43,7 +40,6 @@ from ui_components import (
     renderizar_formulas_matematicas,
     renderizar_tarjetas_generadores,
     renderizar_vector_decision,
-    renderizar_expander_academico,
 )
 from charts import (
     graficar_cluster_barras,
@@ -195,10 +191,7 @@ graficar_comparacion_despacho(
     brecha_pct, emoji_brecha, mejor_cromosoma
 )
 
-# ── Sección H: Justificación académica del AG (expander colapsable) ───────────
-renderizar_expander_academico(costo_ag, costo_voraz, brecha_pct, num_generaciones)
-
-st.markdown("<hr style='border:1px solid #333;'/>", unsafe_allow_html=True)
+# ── Justificación académica removida ───────────────────────────
 
 # ── Sección I: Vector de decisión x* — AG vs. Voraz (tabla comparativa) ───────
 renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES)

@@ -1,10 +1,36 @@
-import numpy as np
+"""
+genetic_optimizer.py — Algoritmo Genético de Despacho Económico (PYTHON PURO)
+==============================================================================
+Implementación DESDE CERO del Algoritmo Genético (AG) y del Despacho Voraz
+de referencia, sin ninguna librería científica externa.
+
+Solo se usan módulos de la biblioteca estándar de Python:
+  - random : para la inicialización aleatoria, selección por torneo y mutación
+
+NO se utiliza numpy, scipy, ni ninguna librería de cálculo numérico.
+Todas las operaciones se realizan con listas nativas y bucles Python.
+
+──────────────────────────────────────────────────────────────────────────────
+FUNDAMENTO TEÓRICO (Holland, 1992; Goldberg, 1989):
+──────────────────────────────────────────────────────────────────────────────
+Basado en el Teorema de los Esquemas (Holland, 1975):
+    El AG procesa implícitamente O(N³) bloques de construcción (esquemas)
+    con solo N evaluaciones por generación («paralelismo implícito»).
+    Esquemas con aptitud superior al promedio reciben crecimiento exponencial
+    en generaciones sucesivas → convergencia al óptimo con alta probabilidad.
+
+Cromosoma:  x = [g₁,g₂,g₃,g₄,g₅,g₆,g₇,g₈] ∈ {0,...,100}⁸
+Espacio de búsqueda: |S| = 101⁸ ≈ 1.08×10¹⁶  (justifica metaheurística)
+──────────────────────────────────────────────────────────────────────────────
+"""
+
+import random
+
 
 # =====================================================================================
 # FLOTA DE GENERADORES DIÉSEL — ESCENARIO REAL (Modo Isla, 8 Unidades)
 # =====================================================================================
-# Columna 0: Capacidad Máxima Nominal  [kW]
-# Columna 1: Costo Operativo Directo   [USD / kW·h]
+# Formato de cada elemento: [Capacidad Máxima Nominal (kW), Costo Operativo (USD/kW·h)]
 # ──────────────────────────────────────────────────────────────────────────────────────
 # Estrategia de despacho óptima (para costo lineal):
 #   Prioridad de carga ← orden ascendente de costo unitario:
@@ -12,7 +38,7 @@ import numpy as np
 #   Gen 7 (110) → Gen 1 (150) → Gen 3 (200) → Gen 6 (250)
 # ──────────────────────────────────────────────────────────────────────────────────────
 # Capacidad total instalada: 300+500+200+400+600+150+450+350 = 2950 kW
-GENERADORES = np.array([
+GENERADORES = [
     [300.0, 150.0],   # Gen 1: Cap. media,      costo alto
     [500.0, 100.0],   # Gen 2: Cap. alta,        costo moderado
     [200.0, 200.0],   # Gen 3: Cap. baja,        RESPALDO CRÍTICO (costoso)
@@ -21,7 +47,7 @@ GENERADORES = np.array([
     [150.0, 250.0],   # Gen 6: Cap. mínima,      EMERGENCIA (el más caro)
     [450.0, 110.0],   # Gen 7: Cap. media-alta,  costo moderado
     [350.0,  70.0],   # Gen 8: Cap. media,       el MÁS EFICIENTE del parque
-])
+]
 
 # Número de genes del cromosoma (= número de generadores)
 N_GENERADORES: int = len(GENERADORES)   # = 8
@@ -42,7 +68,7 @@ N_GENERADORES: int = len(GENERADORES)   # = 8
 # Unidades: αⱼ en [USD / kW²]
 # Rango físico razonable: 0.0001 – 0.001 (cuadrático ≤ 10% del costo base)
 # ──────────────────────────────────────────────────────────────────────────────────────
-COEFICIENTES_TERMICOS = np.array([
+COEFICIENTES_TERMICOS = [
     0.00050,   # Gen 1: $150/kW base — sensibilidad media     (refrigeración estándar)
     0.00030,   # Gen 2: $100/kW base — sensibilidad moderada  (carga alta, buen enfriamiento)
     0.00080,   # Gen 3: $200/kW base — sensibilidad ALTA      (respaldo, peor disipación)
@@ -51,7 +77,7 @@ COEFICIENTES_TERMICOS = np.array([
     0.00100,   # Gen 6: $250/kW base — sensibilidad MÁX.      (emergencia, sin enfriamiento)
     0.00040,   # Gen 7: $110/kW base — sensibilidad moderada  (flexible, rango medio)
     0.00010,   # Gen 8:  $70/kW base — sensibilidad MÍNIMA    (más eficiente, mejor diseño)
-])
+]
 
 
 # =====================================================================================
@@ -86,40 +112,45 @@ def despacho_voraz(demanda: float, temperatura: float = 0.0):
 
     Retorna
     -------
-    asignacion   : ndarray (8,) — kW asignados por generador
-    costo_total  : float        — costo total (con término térmico si T > 0)
-    potencia_kw  : float        — potencia total despachada
-    porcentaje   : ndarray (8,) — porcentaje de carga por generador [0..100]
+    asignacion   : list[float] (8,) — kW asignados por generador
+    costo_total  : float            — costo total (con término térmico si T > 0)
+    potencia_kw  : float            — potencia total despachada
+    porcentaje   : list[int]   (8,) — porcentaje de carga por generador [0..100]
     """
-    # El Voraz ordena por costo base (no puede anticipar el término cuadrático)
-    orden_prioridad = np.argsort(GENERADORES[:, 1])   # índices: [7,3,4,1,6,0,2,5]
+    # Ordenar por costo base ascendente (el Voraz no puede anticipar el término cuadrático)
+    # Índices: [7,3,4,1,6,0,2,5]  →  Gen8(70)→Gen4(80)→Gen5(90)→...→Gen6(250)
+    orden_prioridad = sorted(range(N_GENERADORES), key=lambda i: GENERADORES[i][1])
 
-    asignacion = np.zeros(N_GENERADORES)
+    asignacion = [0.0] * N_GENERADORES
     restante   = demanda
 
     for indice in orden_prioridad:
         if restante <= 0:
             break
-        kw_asignados        = min(restante, GENERADORES[indice, 0])
-        asignacion[indice]  = kw_asignados
-        restante           -= kw_asignados
+        kw_asignados       = min(restante, GENERADORES[indice][0])
+        asignacion[indice] = kw_asignados
+        restante          -= kw_asignados
 
-    potencia_kw = float(np.sum(asignacion))
+    potencia_kw   = sum(asignacion)
+    t_normalizada = temperatura / 100.0
 
     # Costo con el MISMO modelo térmico-cuadrático que el AG (comparación justa)
-    t_normalizada = temperatura / 100.0
-    costo_total   = float(
-        np.sum(asignacion * GENERADORES[:, 1])                        # término lineal
-        + np.sum(COEFICIENTES_TERMICOS * t_normalizada * asignacion**2)  # término cuadrático
+    costo_total = sum(
+        asignacion[i] * GENERADORES[i][1]
+        + COEFICIENTES_TERMICOS[i] * t_normalizada * asignacion[i] ** 2
+        for i in range(N_GENERADORES)
     )
 
-    with np.errstate(divide='ignore', invalid='ignore'):
-        porcentaje = np.where(
-            GENERADORES[:, 0] > 0,
-            np.round((asignacion / GENERADORES[:, 0]) * 100).astype(int),
-            0
-        )
-    porcentaje = np.clip(porcentaje, 0, 100)
+    # Porcentaje de carga por generador [0..100] — sin división por cero
+    porcentaje = []
+    for i in range(N_GENERADORES):
+        cap = GENERADORES[i][0]
+        if cap > 0:
+            p = int(round((asignacion[i] / cap) * 100))
+            p = max(0, min(100, p))
+        else:
+            p = 0
+        porcentaje.append(p)
 
     return asignacion, costo_total, potencia_kw, porcentaje
 
@@ -127,79 +158,73 @@ def despacho_voraz(demanda: float, temperatura: float = 0.0):
 # =====================================================================================
 # EVALUACIÓN DE APTITUD (Función Objetivo + Penalización)
 # =====================================================================================
-def evaluar_aptitud(poblacion: np.ndarray, demanda: float, temperatura: float = 0.0):
+def evaluar_aptitud(poblacion: list, demanda: float, temperatura: float = 0.0):
     """
     Evaluador de la Función Objetivo con Penalización Asimétrica y Costo Térmico.
 
     ──────────────────────────────────────────────────────────────────
     MODELO DE COSTO CUADRÁTICO-TÉRMICO:
     ──────────────────────────────────────────────────────────────────
-    La temperatura exterior T degrada la eficiencia de cada generador j
-    de forma distinta según su coeficiente de sensibilidad térmica αⱼ.
-
     Función de costo extendida:
         Cⱼ(Pⱼ, T) = base_j · Pⱼ  +  αⱼ · (T/100) · Pⱼ²
-                    └─ lineal ─┘   └──── cuadrático-térmico ─────┘
 
     Costo total del cromosoma x:
         f(x, T) = Σⱼ [ base_j · Pⱼ  +  αⱼ · (T/100) · Pⱼ² ]
 
-    POR QUÉ EL AG ES NECESARIO CON ESTE MODELO:
-        - El término αⱼ·(T/100)·Pⱼ² rompe la separabilidad lineal del problema.
-        - La solución óptima puede requerir repartir carga entre generadores.
-        - El Voraz ordena por base_j pero ignora que el costo marginal real
-          crece con la carga: dC/dP = base_j + 2αⱼ(T/100)Pⱼ.
-        - El AG evalúa el costo TOTAL del cromosoma → puede descubrir
-          repartos óptimos que el Voraz descarta.
-
     FORMULACIÓN COMPLETA CON PENALIZACIÓN:
-        Minimizar:  f(x,T) + P(x)
-        P(x) = 0                       si Σ Pⱼ ≥ Demanda
-        P(x) = 1×10⁶ + déficit×1000   si Σ Pⱼ < Demanda
+        Aptitud(x) = f(x,T) + P(x)
+        P(x) = 0                        si Σ Pⱼ ≥ Demanda
+        P(x) = 1×10⁶ + déficit×1000    si Σ Pⱼ < Demanda
     ──────────────────────────────────────────────────────────────────
 
     Parámetros
     ----------
-    poblacion   : ndarray (N, 8) — N cromosomas, cada gen ∈ {0..100} (% carga)
-    demanda     : float          — demanda en kW (salida del SID Mamdani)
-    temperatura : float          — temperatura exterior en °C [0..100]
+    poblacion   : list[list[int]] (N, 8) — N cromosomas, cada gen ∈ {0..100}
+    demanda     : float                  — demanda en kW (salida del SID Mamdani)
+    temperatura : float                  — temperatura exterior en °C [0..100]
 
     Retorna
     -------
-    aptitud      : ndarray (N,)   — f(x,T) + P(x) por cromosoma (a minimizar)
-    costos       : ndarray (N,)   — costo limpio con término térmico (sin penalización)
-    potencia_tot : ndarray (N,)   — potencia total entregada por cromosoma
-    kw_por_gen   : ndarray (N, 8) — kW asignados por generador por cromosoma
+    aptitud      : list[float] (N,)      — aptitud por cromosoma (a minimizar)
+    costos       : list[float] (N,)      — costo limpio con término térmico
+    potencia_tot : list[float] (N,)      — potencia total por cromosoma
+    kw_por_gen   : list[list[float]]     — kW asignados por generador por cromosoma
     """
-    # 1. Alelos enteros [0,100] → fracción decimal [0.0, 1.0]
-    fraccion = poblacion / 100.0                                          # (N, 8)
+    t_normalizada = temperatura / 100.0
+    aptitud      = []
+    costos       = []
+    potencia_tot = []
+    kw_por_gen   = []
 
-    # 2. Potencia aportada por generador: Pⱼ = fracción_j × Capacidad_j
-    kw_por_gen = fraccion * GENERADORES[:, 0]                            # (N, 8)
+    for cromosoma in poblacion:
+        # 1. Convertir alelo [0,100] → kW: Pⱼ = (gⱼ/100) × CapacidadMáxⱼ
+        kw = [cromosoma[i] / 100.0 * GENERADORES[i][0] for i in range(N_GENERADORES)]
 
-    # 3. Costo lineal base: Σⱼ(Pⱼ × base_j)
-    costos_lineales = np.sum(kw_por_gen * GENERADORES[:, 1], axis=1)    # (N,)
+        # 2. Costo lineal base: Σⱼ(Pⱼ × base_j)
+        costo_lineal = sum(kw[i] * GENERADORES[i][1] for i in range(N_GENERADORES))
 
-    # 4. Penalización térmica cuadrática: Σⱼ(αⱼ × (T/100) × Pⱼ²)
-    #    Broadcasting: COEFS_TERMICOS (8,) × kw²(N,8) → suma por fila → (N,)
-    t_normalizada   = temperatura / 100.0
-    costos_termicos = np.sum(
-        COEFICIENTES_TERMICOS * t_normalizada * kw_por_gen**2, axis=1
-    )                                                                    # (N,)
+        # 3. Costo térmico cuadrático: Σⱼ(αⱼ × (T/100) × Pⱼ²)
+        costo_termico = sum(
+            COEFICIENTES_TERMICOS[i] * t_normalizada * kw[i] ** 2
+            for i in range(N_GENERADORES)
+        )
 
-    # 5. Costo total con modelo térmico
-    costos = costos_lineales + costos_termicos                           # (N,)
+        # 4. Costo total con modelo térmico (sin penalización)
+        costo = costo_lineal + costo_termico
 
-    # 6. Potencia total entregada por cromosoma
-    potencia_tot = np.sum(kw_por_gen, axis=1)                           # (N,)
+        # 5. Potencia total del cromosoma
+        potencia = sum(kw)
 
-    # 7. Penalización asimétrica exterior vectorizada (sin ciclos for)
-    #    ① Salto de barrera 1e6 → separa infactibles de factibles
-    #    ② Componente déficit×1000 → ordena infactibles por gravedad
-    deficit  = demanda - potencia_tot
-    penalizacion = np.where(deficit > 0, 1e6 + deficit * 1000.0, 0.0)
+        # 6. Penalización asimétrica exterior:
+        #    ① Salto de barrera 1e6 → separa infactibles de factibles
+        #    ② Componente déficit×1000 → ordena infactibles por gravedad
+        deficit      = demanda - potencia
+        penalizacion = (1e6 + deficit * 1000.0) if deficit > 0 else 0.0
 
-    aptitud = costos + penalizacion                                      # (N,)
+        aptitud.append(costo + penalizacion)
+        costos.append(costo)
+        potencia_tot.append(potencia)
+        kw_por_gen.append(kw)
 
     return aptitud, costos, potencia_tot, kw_por_gen
 
@@ -216,26 +241,17 @@ def ejecutar_ag(
     num_elites:     int   = 2
 ):
     """
-    Algoritmo Genético Vectorizado — NumPy puro (sin librerías de caja negra).
+    Algoritmo Genético — Python puro (sin librerías externas de cálculo).
 
     ──────────────────────────────────────────────────────────────────────────────
-    FUNDAMENTO TEÓRICO (Holland, 1992; Goldberg, 1989):
+    OPERADORES IMPLEMENTADOS:
     ──────────────────────────────────────────────────────────────────────────────
-    Basado en el Teorema de los Esquemas (Holland, 1975):
-        El AG procesa implícitamente O(N³) bloques de construcción (esquemas)
-        con solo N evaluaciones por generación («paralelismo implícito»).
-        Esquemas con aptitud superior al promedio reciben crecimiento exponencial
-        en generaciones sucesivas → convergencia al óptimo con alta probabilidad.
-
-    Parámetros estándar empleados:
-        Pc = 0.85  → dentro del rango teórico [0.6, 0.9] (Goldberg, 1989)
-        μ  = 0.10  → calibrado para espacio discreto 101⁸
-        k  = 3     → presión selectiva moderada sin convergencia prematura
-        Élites = 2 → garantiza aptitud no creciente: f*(t+1) ≤ f*(t)
-
-    Cromosoma:  x = [g₁,g₂,g₃,g₄,g₅,g₆,g₇,g₈] ∈ {0,...,100}⁸
-    Espacio de búsqueda:  |S| = 101⁸ ≈ 1.08×10¹⁶  (justifica metaheurística)
-    ──────────────────────────────────────────────────────────────────────────────
+    • Selección:    Torneo estricto k=3 (presión selectiva moderada)
+    • Cruzamiento:  Un punto aleatorio, Pc = 0.85  [Goldberg, 1989]
+    • Mutación:     Uniforme por gen, μ = tasa_mutacion ∈ (0,1)
+    • Elitismo:     Los num_elites mejores pasan directamente a la siguiente gen.
+                    Garantía: f*(t+1) ≤ f*(t) para todo t  [Whitley, 1989]
+    • Parada:       Estancamiento: PACIENCIA generaciones consecutivas sin mejora
 
     Parámetros
     ----------
@@ -248,22 +264,25 @@ def ejecutar_ag(
 
     Retorna
     -------
-    mejor_cromosoma   : ndarray (8,)  — cromosoma óptimo (% de carga por gen.)
-    mejor_asignacion  : ndarray (8,)  — kW despachados por generador
-    mejor_costo       : float         — costo USD con modelo térmico (sin penalización)
-    mejor_potencia    : float         — potencia total despachada en kW
-    historial_aptitud : list[float]   — aptitud mínima por generación (con penalización)
-    historial_costo   : list[float]   — costo mínimo limpio por generación (NaN si infactible)
-    gen_parada        : int           — generación real en que el AG se detuvo
+    mejor_cromosoma   : list[int]   (8,) — cromosoma óptimo (% de carga por gen.)
+    mejor_asignacion  : list[float] (8,) — kW despachados por generador
+    mejor_costo       : float            — costo USD con modelo térmico
+    mejor_potencia    : float            — potencia total despachada en kW
+    historial_aptitud : list[float]      — aptitud mínima por generación
+    historial_costo   : list[float]      — costo mínimo limpio (float('nan') si infactible)
+    gen_parada        : int              — generación real en que el AG se detuvo
     """
     # ── INICIALIZACIÓN (t=0): Población aleatoria uniforme ───────────────────
     # P₀ ~ U({0,...,100}⁸)^N — cobertura uniforme del hiperespacio de búsqueda
-    poblacion = np.random.randint(0, 101, size=(tam_poblacion, N_GENERADORES))
+    poblacion = [
+        [random.randint(0, 100) for _ in range(N_GENERADORES)]
+        for _ in range(tam_poblacion)
+    ]
 
     historial_aptitud: list = []   # aptitud mínima(t) — incluye penalización
-    historial_costo:   list = []   # costo mínimo limpio(t) — NaN si sin solución válida
+    historial_costo:   list = []   # costo mínimo limpio(t) — nan si sin solución válida
 
-    # ── Criterio de parada por estancamiento ─────────────────────────────────
+    # ── Criterio de parada por estancamiento ────────────────────────────────
     # Si la aptitud mínima no mejora en PACIENCIA generaciones consecutivas,
     # el AG ha convergido: continuar es computacionalmente inútil.
     PACIENCIA            = max(20, generaciones // 5)
@@ -277,21 +296,22 @@ def ejecutar_ag(
         aptitud, costos, potencia_tot, _ = evaluar_aptitud(poblacion, demanda, temperatura)
 
         # ── ELITISMO: Preservar los mejores ANTES de modificar la población ──
-        # Ordenamos ascendente (menor aptitud = individuo más apto)
-        indices_ordenados = np.argsort(aptitud)
-        elites            = poblacion[indices_ordenados[:num_elites]].copy()
+        # Ordenar ascendente (menor aptitud = individuo más apto)
+        indices_ordenados = sorted(range(tam_poblacion), key=lambda i: aptitud[i])
+        elites = [poblacion[i][:] for i in indices_ordenados[:num_elites]]
 
-        # ── REGISTRO DE HISTORIALES ───────────────────────────────────────────
-        aptitud_actual = float(aptitud[indices_ordenados[0]])
+        # ── REGISTRO DE HISTORIALES ─────────────────────────────────────────
+        aptitud_actual = aptitud[indices_ordenados[0]]
         historial_aptitud.append(aptitud_actual)
 
-        mascara_validos = potencia_tot >= demanda
-        if np.any(mascara_validos):
-            historial_costo.append(float(np.min(costos[mascara_validos])))
+        # Solo registrar costo si existe algún cromosoma factible (potencia ≥ demanda)
+        validos = [i for i in range(tam_poblacion) if potencia_tot[i] >= demanda]
+        if validos:
+            historial_costo.append(min(costos[i] for i in validos))
         else:
             historial_costo.append(float('nan'))   # generación completamente infactible
 
-        # ── DETECCIÓN DE CONVERGENCIA (Criterio de Estancamiento) ────────────
+        # ── DETECCIÓN DE CONVERGENCIA (Criterio de Estancamiento) ───────────
         if aptitud_actual < mejor_aptitud_global - 1e-6:   # mejora significativa
             mejor_aptitud_global = aptitud_actual
             estancamiento = 0
@@ -302,51 +322,49 @@ def ejecutar_ag(
             gen_parada = gen + 1       # generación real de convergencia
             break
 
-        # ── FASE B: SELECCIÓN POR TORNEO ESTRICTO (k=3) ──────────────────────
-        # ┌────────────────────────────────────────────────────────────────────┐
-        # │  Para cada posición i de la nueva población:                      │
-        # │    1. Elegir 3 índices al azar (sin reemplazo)                    │
-        # │    2. El cromosoma con menor aptitud gana el torneo               │
-        # │    3. El ganador ocupa la posición i en la nueva población         │
-        # │  Presión selectiva k=3 → intermedia entre k=2 y k=5              │
-        # └────────────────────────────────────────────────────────────────────┘
-        nueva_poblacion = np.zeros_like(poblacion)
-        for i in range(tam_poblacion):
-            combatientes = np.random.choice(tam_poblacion, size=3, replace=False)
-            ganador      = combatientes[np.argmin(aptitud[combatientes])]
-            nueva_poblacion[i] = poblacion[ganador]
+        # ── FASE B: SELECCIÓN POR TORNEO ESTRICTO (k=3) ─────────────────────
+        # ┌───────────────────────────────────────────────────────────────────┐
+        # │  Para cada posición i de la nueva población:                     │
+        # │    1. Elegir 3 índices al azar (sin reemplazo)                   │
+        # │    2. El cromosoma con menor aptitud gana el torneo              │
+        # │    3. El ganador ocupa la posición i en la nueva población        │
+        # │  Presión selectiva k=3 → intermedia entre k=2 y k=5             │
+        # └───────────────────────────────────────────────────────────────────┘
+        nueva_poblacion = []
+        for _ in range(tam_poblacion):
+            combatientes = random.sample(range(tam_poblacion), 3)
+            ganador      = min(combatientes, key=lambda i: aptitud[i])
+            nueva_poblacion.append(poblacion[ganador][:])
 
-        # ── FASE C: CRUZAMIENTO DE UN PUNTO (Pc = 0.85) ──────────────────────
-        # ┌────────────────────────────────────────────────────────────────────┐
-        # │  Sea p ∈ {1,...,7} el punto de corte (aleatorio).                 │
-        # │                                                                    │
-        # │  Padre₁ = [ G₁  G₂ ··· Gₚ | G_{p+1} ··· G₈ ]                   │
-        # │  Padre₂ = [ H₁  H₂ ··· Hₚ | H_{p+1} ··· H₈ ]                   │
-        # │                              ↕ intercambio de colas               │
-        # │  Hijo₁  = [ G₁  G₂ ··· Gₚ    H_{p+1} ··· H₈ ]                  │
-        # │  Hijo₂  = [ H₁  H₂ ··· Hₚ    G_{p+1} ··· G₈ ]                  │
-        # └────────────────────────────────────────────────────────────────────┘
+        # ── FASE C: CRUZAMIENTO DE UN PUNTO (Pc = 0.85) ─────────────────────
+        # ┌───────────────────────────────────────────────────────────────────┐
+        # │  Sea p ∈ {1,...,7} el punto de corte (aleatorio).                │
+        # │  Padre₁ = [ G₁ ··· Gₚ | G_{p+1} ··· G₈ ]                       │
+        # │  Padre₂ = [ H₁ ··· Hₚ | H_{p+1} ··· H₈ ]                       │
+        # │                          ↕ intercambio de colas                  │
+        # │  Hijo₁  = [ G₁ ··· Gₚ   H_{p+1} ··· H₈ ]                       │
+        # │  Hijo₂  = [ H₁ ··· Hₚ   G_{p+1} ··· G₈ ]                       │
+        # └───────────────────────────────────────────────────────────────────┘
         for i in range(num_elites, tam_poblacion - 1, 2):   # élites inmunes
-            if np.random.rand() < 0.85:
-                punto_corte = np.random.randint(1, N_GENERADORES)
-                padre1 = nueva_poblacion[i].copy()
-                padre2 = nueva_poblacion[i + 1].copy()
-                nueva_poblacion[i,     punto_corte:] = padre2[punto_corte:]
-                nueva_poblacion[i + 1, punto_corte:] = padre1[punto_corte:]
+            if random.random() < 0.85:
+                punto  = random.randint(1, N_GENERADORES - 1)
+                padre1 = nueva_poblacion[i][:]
+                padre2 = nueva_poblacion[i + 1][:]
+                nueva_poblacion[i]     = padre1[:punto] + padre2[punto:]
+                nueva_poblacion[i + 1] = padre2[:punto] + padre1[punto:]
 
-        # ── FASE D: MUTACIÓN UNIFORME VECTORIZADA ────────────────────────────
-        # ┌────────────────────────────────────────────────────────────────────┐
-        # │  Máscara booleana: M = (D < μ),  D ~ U[0,1]^{N×8}               │
-        # │  Si M[i,j] = True  → gen mutado  = R[i,j] ~ U({0,...,100})       │
-        # │  Si M[i,j] = False → gen intacto = nueva_pop[i,j]                │
-        # │  Élites B[:num_elites,:] = False  →  INMUNES a mutación           │
-        # └────────────────────────────────────────────────────────────────────┘
-        mascara_mutacion   = np.random.rand(tam_poblacion, N_GENERADORES) < tasa_mutacion
-        mascara_mutacion[:num_elites] = False                  # élites no mutan
-        alelos_aleatorios  = np.random.randint(0, 101, size=(tam_poblacion, N_GENERADORES))
-        nueva_poblacion    = np.where(mascara_mutacion, alelos_aleatorios, nueva_poblacion)
+        # ── FASE D: MUTACIÓN UNIFORME POR GEN ───────────────────────────────
+        # ┌───────────────────────────────────────────────────────────────────┐
+        # │  Si random() < μ  → gen mutado  = randint(0, 100)               │
+        # │  Si random() ≥ μ  → gen intacto                                  │
+        # │  Élites [:num_elites] → INMUNES a mutación                       │
+        # └───────────────────────────────────────────────────────────────────┘
+        for i in range(num_elites, tam_poblacion):
+            for j in range(N_GENERADORES):
+                if random.random() < tasa_mutacion:
+                    nueva_poblacion[i][j] = random.randint(0, 100)
 
-        # ── INYECCIÓN DE ÉLITES: Garantiza aptitud no creciente ──────────────
+        # ── INYECCIÓN DE ÉLITES: Garantiza aptitud no creciente ─────────────
         # Los num_elites mejores de t se copian directamente a t+1.
         # Propiedad: f*(t+1) ≤ f*(t) para todo t  (Whitley, 1989).
         nueva_poblacion[:num_elites] = elites
@@ -357,13 +375,13 @@ def ejecutar_ag(
     aptitud_final, costos_final, potencia_final, asignacion_final = \
         evaluar_aptitud(poblacion, demanda, temperatura)
 
-    indice_mejor = np.argmin(aptitud_final)
+    indice_mejor = min(range(tam_poblacion), key=lambda i: aptitud_final[i])
 
     return (
-        poblacion[indice_mejor],             # mejor_cromosoma
-        asignacion_final[indice_mejor],      # mejor_asignacion (kW por gen.)
-        costos_final[indice_mejor],          # mejor_costo (USD, sin penalización)
-        potencia_final[indice_mejor],        # mejor_potencia (kW total)
+        poblacion[indice_mejor],             # mejor_cromosoma   list[int] (8,)
+        asignacion_final[indice_mejor],      # mejor_asignacion  list[float] (8,)
+        costos_final[indice_mejor],          # mejor_costo       float (USD)
+        potencia_final[indice_mejor],        # mejor_potencia    float (kW)
         historial_aptitud,                   # historial de aptitud mínima
         historial_costo,                     # historial de costo limpio mínimo
         gen_parada,                          # generación real de parada

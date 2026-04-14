@@ -17,7 +17,6 @@ Funciones:
 """
 
 import streamlit as st
-import numpy as np
 
 
 # ====================================================================
@@ -103,7 +102,7 @@ def renderizar_encabezado():
     )
     st.markdown(
         "<p style='text-align:center;color:#aaa;margin-bottom:30px;'>"
-        "Optimización Interactiva · Algoritmo Genético (NumPy) + Lógica Difusa Mamdani (skfuzzy) "
+        "Optimización Interactiva · Algoritmo Genético (Python Puro) + Lógica Difusa Mamdani (Python Puro) "
         "· Capacidad total instalada: <b>2950 kW</b></p>",
         unsafe_allow_html=True
     )
@@ -252,8 +251,8 @@ def renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_
 
     for i in range(N_GENERADORES):
         porcentaje_carga = int(mejor_cromosoma[i])
-        capacidad_max    = GENERADORES[i, 0]
-        costo_por_kw     = GENERADORES[i, 1]
+        capacidad_max    = GENERADORES[i][0]
+        costo_por_kw     = GENERADORES[i][1]
         kw_aportados     = asignacion[i]
         costo_parcial    = kw_aportados * costo_por_kw
 
