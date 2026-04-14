@@ -1,8 +1,3 @@
-"""
-LogicaDifusa/motor.py
-Orquestador del Sistema de Inferencia Difusa Modular.
-Une todas las fases (Fuzzificación, Inferencia, Agregación, Defuzzificación).
-"""
 
 import matplotlib.pyplot as plt
 from data_mining import minar_reglas_proyecto
@@ -11,8 +6,11 @@ from .inferencia import aplicar_inferencia
 from .agregacion import agregar_reglas
 from .defuzzificacion import centroide
 
+# - construir_sistema_difuso: define universos, funciones y reglas
+# - estimar_demanda: ejecuta las 4 fases del SID
+
 def construir_sistema_difuso():
-    """Define los universos y MFs (Sincronizado con Apriori)."""
+#Define los universos y MFs (Apriori)
     universo_temp = list(range(0, 101))
     universo_prod = list(range(0, 101))
     universo_dem  = list(range(200, 2201))
@@ -64,7 +62,7 @@ def construir_sistema_difuso():
     return sistema, None
 
 def estimar_demanda(sistema, _var_demanda, temp: float, prod: float):
-    """Ejecuta las 4 fases de la lógica difusa paso a paso."""
+    #Ejecuta las 4 fases de la lógica difusa paso a paso.
     # 1. FUZZIFICACIÓN
     mu_temp = calcular_pertenencia(temp, sistema['mfs_temp'])
     mu_prod = calcular_pertenencia(prod, sistema['mfs_prod'])
@@ -86,7 +84,6 @@ def estimar_demanda(sistema, _var_demanda, temp: float, prod: float):
     return salida_crisp, simulacion
 
 def graficar_resultado_difuso(simulacion: dict, _v) -> plt.Figure:
-    """Mantiene compatibilidad con la UI de Streamlit."""
     universo_dem = simulacion['universo_dem']
     mfs_dem      = simulacion['mfs_dem']
     mu_agregada  = simulacion['mu_agregada']

@@ -1,33 +1,15 @@
-"""
-ui_components.py — Módulo de Componentes de Interfaz de Usuario
-================================================================
-Contiene las funciones que renderizan los elementos visuales HTML/CSS
-de la aplicación. Cada función es responsable de una sección específica
-de la interfaz, lo que permite ubicar y modificar componentes de forma
-independiente sin tocar la lógica de cálculo.
-
-Funciones:
-    inyectar_css()                  → CSS global (glassmorphism, animaciones)
-    renderizar_encabezado()         → Título y subtítulo principal de la app
-    renderizar_tarjetas_kpi()       → 4 tarjetas del dashboard central
-    renderizar_formulas_matematicas() → Expander con fórmulas LaTeX del modelo
-    renderizar_tarjetas_generadores() → 8 tarjetas de estado operativo
-    renderizar_vector_decision()    → Tabla comparativa AG vs. Voraz (x*)
-    renderizar_expander_academico() → Justificación académica del AG
-"""
-
 import streamlit as st
+
+# Guia rapida:
+# - Este archivo solo dibuja UI (sin logica matematica).
+# - Si cambias textos/estilo del dashboard, empieza por aqui.
 
 
 # ====================================================================
 # SECCIÓN 1: ESTILOS GLOBALES (CSS)
 # ====================================================================
 def inyectar_css():
-    """
-    Inyecta el CSS global de la aplicación: glassmorphism, animaciones
-    neón, tarjetas de generadores, barras de progreso y emblemas de estado.
-    Se llama UNA sola vez al inicio de app.py antes de renderizar nada.
-    """
+
     st.markdown("""
 <style>
 .main { background-color: #0e1117; color: white; }
@@ -88,14 +70,9 @@ def inyectar_css():
 """, unsafe_allow_html=True)
 
 
-# ====================================================================
 # SECCIÓN 2: ENCABEZADO PRINCIPAL
-# ====================================================================
 def renderizar_encabezado():
-    """
-    Renderiza el título principal (h1) y el subtítulo descriptivo de la app.
-    Incluye la capacidad total instalada del parque de generadores.
-    """
+
     st.markdown(
         "<h1 style='text-align:center;margin-bottom:0;'>Simulador de Despacho Económico — Planta Diésel 8 GEN</h1>",
         unsafe_allow_html=True
@@ -108,29 +85,10 @@ def renderizar_encabezado():
     )
 
 
-# ====================================================================
 # SECCIÓN 3: TARJETAS KPI — DASHBOARD CENTRAL
-# ====================================================================
+
 def renderizar_tarjetas_kpi(demanda_kw, potencia_ag, costo_ag, costo_voraz):
-    """
-    Renderiza las 4 tarjetas del dashboard principal:
-      - KPI 1: Demanda estimada por el SID Mamdani (kW)
-      - KPI 2: Potencia total despachada por el AG (kW) y estado (OK/déficit)
-      - KPI 3: Costo operativo del AG (USD/h)
-      - KPI 4: Costo del Voraz + Brecha porcentual AG vs. Voraz
 
-    Parámetros
-    ----------
-    demanda_kw  : float — demanda en kW calculada por el SID
-    potencia_ag : float — potencia total del cromosoma óptimo del AG (kW)
-    costo_ag    : float — costo USD del cromosoma óptimo (sin penalización)
-    costo_voraz : float — costo USD del algoritmo Voraz (referencia)
-
-    Retorna
-    -------
-    brecha_pct  : float — brecha porcentual AG vs. Voraz
-    emoji_brecha: str   — indicador textual según calidad (BAJA/MEDIA/ALTA)
-    """
     col1, col2, col3, col4 = st.columns(4)
 
     # ── KPI 1: Inyección de Conocimiento (SID) ────────────────────────────────
@@ -176,9 +134,7 @@ def renderizar_tarjetas_kpi(demanda_kw, potencia_ag, costo_ag, costo_voraz):
     return brecha_pct, emoji_brecha
 
 
-# ====================================================================
 # SECCIÓN 4: FORMULACIÓN MATEMÁTICA (EXPANDER)
-# ====================================================================
 def renderizar_formulas_matematicas():
     """
     Expander colapsable con las fórmulas LaTeX del modelo de optimización:
@@ -207,30 +163,9 @@ def renderizar_formulas_matematicas():
             st.latex(r"P(x) = \begin{cases} 0 & \text{si } g(x) \text{ se cumple} \\ 10^6 + 10^3 \times (\text{déficit}) & \text{en caso contrario} \end{cases}")
 
 
-# ====================================================================
 # SECCIÓN 5: TARJETAS DE ESTADO OPERATIVO (8 GENERADORES)
-# ====================================================================
 def renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES):
-    """
-    Renderiza las 8 tarjetas de estado operativo del clúster de generadores
-    en una cuadrícula de 2 filas × 4 columnas.
 
-    Cada tarjeta muestra:
-      - Indicador visual (ON activo / OFF apagado)
-      - Nombre del generador y su rol en el parque
-      - Emblema ON/OFF con color semántico
-      - Potencia asignada / máxima (kW)
-      - Costo parcial (USD)
-      - Barra de progreso de carga (%)
-      - Eficiencia unitaria (USD/kW)
-
-    Parámetros
-    ----------
-    mejor_cromosoma : ndarray (8,) — genes del cromosoma óptimo (% de carga)
-    asignacion      : ndarray (8,) — kW asignados por generador
-    GENERADORES     : ndarray (8,2) — [capacidad kW, costo USD/kW]
-    N_GENERADORES   : int           — número de generadores (= 8)
-    """
     # Roles descriptivos de cada generador (índice base-0)
     ROLES = {
         0: "Carga Media · Alto Costo",    1: "Carga Alta · Moderado",
@@ -239,7 +174,7 @@ def renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_
         6: "Flexible · Moderado",          7: "MÁS EFICIENTE · $70/kW"
     }
 
-    st.markdown("### Estado Operativo del Clúster de Generación (8 Unidades)")
+    st.markdown(" Estado Operativo del Clúster de Generación (8 Unidades)")
     st.caption(
         "El AG prioriza generadores de menor costo unitario. "
         "Gen 3 (RESPALDO·$200/kW) y Gen 6 (EMERGENCIA·$250/kW) solo deben activarse "
@@ -281,14 +216,9 @@ def renderizar_tarjetas_generadores(mejor_cromosoma, asignacion, GENERADORES, N_
             st.markdown(html, unsafe_allow_html=True)
 
 
-# ====================================================================
 # SECCIÓN 6: VECTOR DE DECISIÓN ÓPTIMO x* (EXPANDER)
-# ====================================================================
 def renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES):
-    """
-    Expander que muestra el Vector de Estado Óptimo (x*) comparando
-    el despacho AG frente a la heurística de referencia.
-    """
+
     with st.expander("Vector de Estado Óptimo (x*) vs. Heurística Greedy"):
         # Fila de encabezados
         cols_encabezado = st.columns([2] + [1]*N_GENERADORES)
@@ -298,7 +228,7 @@ def renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES)
 
         # Fila AG
         cols_ag = st.columns([2] + [1]*N_GENERADORES)
-        cols_ag[0].markdown("🤖 **AG (x\\*)**")
+        cols_ag[0].markdown("**AG (x\\*)**")
         for i in range(N_GENERADORES):
             color = "#00ffcc" if mejor_cromosoma[i] > 0 else "#555"
             cols_ag[i+1].markdown(
@@ -317,46 +247,3 @@ def renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES)
             )
 
 
-# ====================================================================
-# SECCIÓN 7: JUSTIFICACIÓN ACADÉMICA (EXPANDER)
-# ====================================================================
-def renderizar_expander_academico(costo_ag, costo_voraz, brecha_pct, num_generaciones):
-    """
-    Expander con la justificación académica del AG frente al Voraz.
-
-    Explica por qué el AG es necesario con modelo de costo cuadrático-térmico:
-      1. No-linealidad del problema con temperatura
-      2. El Voraz ignora el costo marginal creciente
-      3. El AG evalúa el cromosoma completo y descubre repartos óptimos
-
-    Parámetros
-    ----------
-    costo_ag         : float — costo USD del AG
-    costo_voraz      : float — costo USD del Voraz
-    brecha_pct       : float — brecha porcentual AG vs. Voraz
-    num_generaciones : int   — generaciones configuradas
-    """
-    with st.expander("Justificación académica: ¿Por qué usar AG si existe el algoritmo Voraz?"):
-        st.markdown(f"""
-**Con modelo de costo LINEAL (temperatura = 0)**, el algoritmo Voraz es óptimo y resuelve
-en O(N log N). El AG no puede superar al Voraz en este caso.
-
-**Con modelo de costo CUADRÁTICO-TÉRMICO (temperatura > 0)**:
-- La función de costo `Cⱼ(Pⱼ,T) = base_j·Pⱼ + αⱼ·(T/100)·Pⱼ²` **rompe la separabilidad**.
-- El Voraz de referencia ordena por `base_j` (costo marginal inicial) e intenta saturar el generador más barato.
-- Luego su costo se evalúa con el mismo modelo total (lineal + térmico) para comparar en igualdad de condiciones.
-- Pero `dC/dP = base_j + 2·αⱼ·(T/100)·Pⱼ` **crece con la carga** → el Voraz asigna demasiado al primero.
-- El AG evalúa el **costo total del cromosoma completo** → puede descubrir repartos entre
-  generadores que minimicen el impacto del término cuadrático.
-
-Con {num_generaciones} generaciones, el AG obtuvo **${costo_ag:,.0f}** vs.
-el Voraz con **${costo_voraz:,.0f}** — brecha de **{brecha_pct:.2f}%**.
-
-**¿Por qué implementar el AG entonces?**
-
-1. **Generalidad:** Acepta cualquier forma de f(x,T) sin cambiar ningún operador genético.
-2. **No-linealidad:** Los operadores clásicos (Voraz, Programación Lineal) fallan cuando
-   el costo marginal no es constante. El AG no requiere separabilidad.
-3. **Integración dinámica con el SID:** El acoplamiento con el motor difuso permite
-   re-optimización en tiempo real ante cambios de temperatura o carga productiva.
-""")

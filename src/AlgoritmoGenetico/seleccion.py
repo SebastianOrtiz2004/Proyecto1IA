@@ -4,11 +4,9 @@ Implementa la presión selectiva mediante torneos.
 """
 import random
 
+# Torneo: selecciona padres con presion selectiva moderada con el menor aptitud gana.
 def seleccion_torneo(poblacion: list, aptitud: list, k: int = 3):
-    """
-    Selección por torneos de tamaño k. 
-    Elegimos k individuos al azar y el más apto (menor aptitud) gana.
-    """
+
     nueva_poblacion = []
     tam_poblacion = len(poblacion)
     if tam_poblacion == 0:

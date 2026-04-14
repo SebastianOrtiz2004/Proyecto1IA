@@ -1,13 +1,9 @@
-"""
-LogicaDifusa/defuzzificacion.py (FASE 4)
-Convierte el conjunto difuso final (agregado) en un valor representativo kW (Crisp).
-"""
 
+# Salida final del SID: valor unico de demanda en kW.
 def centroide(mu_agregada: list, universo_dem: list) -> float:
-    """
-    Método del Centro de Gravedad (COG).
-    u* = Σ(u · μ_agg(u)) / Σ(μ_agg(u))
-    """
+    
+    #u* = Σ(u · μ_agg(u)) / Σ(μ_agg(u))
+    
     numerador = sum(universo_dem[i] * mu_agregada[i] for i in range(len(universo_dem)))
     denominador = sum(mu_agregada)
     

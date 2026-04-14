@@ -1,14 +1,13 @@
-"""
-app.py — Orquestador Principal del Simulador de Despacho Económico
-==================================================================
-Versión Master: UI Clásica para Simulación Manual / UI Enriquecida por Fases para Análisis de Dataset.
-"""
+
 
 import streamlit as st
 import csv
 from pathlib import Path
+# - Flujo manual: SID -> AG -> benchmark voraz.
+# - Flujo dataset: auditoria por lote de 100 muestras (cacheado).
+# - Si algo de UI falla, revisar primero este archivo.
 
-# ── Módulos propios del proyecto ──────────────────────────────────────────────
+# Módulos propios del proyecto 
 from LogicaDifusa import (
     construir_sistema_difuso,
     estimar_demanda,
@@ -37,9 +36,7 @@ from charts import (
     graficar_analisis_dataset,
 )
 
-# ====================================================================
 # 1. CONFIGURACIÓN DE LA PÁGINA Y CACHÉ DEL SID
-# ====================================================================
 st.set_page_config(
     page_title="Simulador Planta Diésel — 8 Generadores",
     layout="wide",
@@ -141,13 +138,10 @@ def procesar_dataset_historico(ruta_csv_str: str):
         "estadisticas_reglas": estadisticas_reglas,
     }
 
-# ── Inyectar CSS global y renderizar encabezado ───────────────────────────────
 inyectar_css()
 renderizar_encabezado()
 
-# ====================================================================
 # 2. PANEL LATERAL — Controles y Modo de Operación
-# ====================================================================
 st.sidebar.markdown("### Modo de Operación")
 modo_app = st.sidebar.radio("Seleccionar visualización:", 
                            ["Simulación Manual", "Análisis de Dataset (Apriori)"])
@@ -170,15 +164,12 @@ num_generaciones = st.sidebar.slider("Generaciones máx. (t_max)", 10, 300, 120)
 tasa_mutacion  = st.sidebar.slider("Tasa de Mutación (μ)",      0.01, 0.50, 0.10, step=0.01)
 num_elites     = st.sidebar.slider("Élites preservados (k)",      1,   5,   2)
 
-# ── LOGICA COMPARTIDA ────────────────────────────────────────────────────────
 sistema_control, _ = obtener_sistema_difuso()
 
-# ====================================================================
 # 3. RENDERIZADO SEGÚN MODO SELECCIONADO
-# ====================================================================
+
 
 if modo_app == "Simulación Manual":
-    # ── VISTA CLÁSICA UNIFICADA ──────────────────────────────────────────────
     
     # 1. Ejecución SID
     demanda_kw, simulacion_difusa = estimar_demanda(sistema_control, None, valor_temperatura, valor_produccion)
@@ -269,7 +260,7 @@ if modo_app == "Simulación Manual":
     renderizar_vector_decision(mejor_cromosoma, porcentaje_voraz, N_GENERADORES)
 
 else:
-    # ── VISTA ENRIQUECIDA POR FASES (AUDITORÍA DE DATASET) ────────────────────
+    # ─VISTA POR FASES (AUDITORÍA DE DATASET)
     st.markdown("### Pipeline de Auditoría de IA sobre Dataset Histórico")
     
     ruta_csv = Path(__file__).resolve().parent / "DataSet" / "historico_planta.csv"
@@ -314,7 +305,7 @@ else:
         with col_dat: st.dataframe(resultados[:10], use_container_width=True)
 
     with tab2:
-        st.markdown("#### Comportamiento del Motor Difuso")
+        st.markdown("Comportamiento del Motor Difuso")
         st.caption("Visualización correspondiente a la última muestra histórica procesada.")
         if last_sim_fuzzy is not None:
             graficar_membresia_difusa(last_sim_fuzzy, None, graficar_resultado_difuso)

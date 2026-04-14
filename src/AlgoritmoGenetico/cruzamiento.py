@@ -1,15 +1,10 @@
-"""
-AlgoritmoGenetico/cruzamiento.py
-Operador de recombinación de un punto (Pc = 0.85).
-"""
+
 import random
 from .config import N_GENERADORES
 
+# Cruce de un punto: mantiene bloques de genes de cada padre.
 def aplicar_cruzamiento(poblacion: list, pc: float = 0.85):
-    """
-    Intercambio de material genético (recombinación).
-    Hijos heredan bloques de construcción de los padres.
-    """
+
     p_len = len(poblacion)
     # Recombinar de 2 en 2
     for i in range(0, p_len - 1, 2):

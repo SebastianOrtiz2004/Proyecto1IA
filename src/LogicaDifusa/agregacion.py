@@ -1,14 +1,9 @@
-"""
-LogicaDifusa/agregacion.py (FASE 3)
-Combina las reglas activadas usando la S-Norma (Máximo) para obtener el conjunto resultante.
-"""
 from .fuzzificacion import trimf
 
+# Junta todas las reglas activas en una sola curva de salida.
 def agregar_reglas(activaciones: list, mfs_dem: dict, universo_dem: list):
-    """
-    Agregación de Mamdani.
-    μ_agg(u) = máx sobre todas las reglas de: mín(activación, mu_demanda(u))
-    """
+
+#Agregación de Mamdani. μ_agg(u) = máx sobre todas las reglas de: mín(activación, mu_demanda(u))
     n = len(universo_dem)
     mu_agregada = [0.0] * n
     

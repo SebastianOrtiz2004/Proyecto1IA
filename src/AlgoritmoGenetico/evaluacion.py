@@ -1,14 +1,11 @@
-"""
-AlgoritmoGenetico/evaluacion.py
-Función de Aptitud (Fitness) con penalización asimétrica.
-"""
 from .config import GENERADORES, COEFICIENTES_TERMICOS, N_GENERADORES
 
+# Esta funcion define "que es mejor" para el AG.
+# Si cambia la formulacion matematica, el ajuste principal va aqui.
 def evaluar_poblacion(poblacion: list, demanda: float, temperatura: float):
-    """
-    Evalúa cada cromosoma. 
-    Fitness = Costo(lineal + térmico) + Penalización(déficit)
-    """
+
+#Fitness = Costo(lineal + térmico) + Penalización(déficit)
+
     tn = temperatura / 100.0
     aptitudes = []
     costos = []

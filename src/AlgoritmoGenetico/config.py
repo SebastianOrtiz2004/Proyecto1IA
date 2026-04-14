@@ -1,9 +1,5 @@
-"""
-AlgoritmoGenetico/config.py
-Configuración técnica de la planta y los coeficientes térmicos.
-"""
+# Capacidades y costos
 
-# FLOTA DE GENERADORES DIÉSEL
 # Formato: [Capacidad Máxima (kW), Costo Base (USD/kW·h)]
 GENERADORES = [
     [300.0, 150.0], [500.0, 100.0], [200.0, 200.0], [400.0, 80.0],

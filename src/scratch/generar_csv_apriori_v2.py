@@ -3,6 +3,7 @@ import csv
 import random
 from datetime import datetime, timedelta
 
+# Variante con mayor dispersion para estresar el minado de reglas.
 def generar_dataset_historico_apriori_v2(n_muestras=100):
     os.makedirs("DataSet", exist_ok=True)
     ruta_archivo = os.path.join("DataSet", "historico_planta.csv")

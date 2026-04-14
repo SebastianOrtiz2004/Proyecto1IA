@@ -1,14 +1,10 @@
-"""
-LogicaDifusa/inferencia.py (FASE 2)
-Aplica la T-Norma (Mínimo) sobre los antecedentes por cada regla minada.
-"""
+
+# Esta fase decide que reglas "disparan" y con que intensidad. Aplica la T-Norma(Mínimo)
 
 def aplicar_inferencia(mu_prod: dict, mu_temp: dict, reglas: list):
-    """
-    Motor de implicación Mamdani. 
-    Activa cada regla usando el operador Mínimo:
-    activacion = min(mu_produccion, mu_temperatura)
-    """
+
+#activacion = min(mu_produccion, mu_temperatura)
+
     activaciones = []
     for conj_prod, conj_temp, conj_dem in reglas:
         # Se asume conjuncion AND mediante T-Norma (Mínimo)

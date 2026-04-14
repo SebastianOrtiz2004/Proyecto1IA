@@ -3,6 +3,7 @@ import csv
 import random
 from datetime import datetime, timedelta
 
+# Script rapido para generar historico base de pruebas.
 def generar_dataset_historico(n_muestras=100):
     # Definir ruta (ya creada previamente con mkdir)
     ruta_archivo = os.path.join("DataSet", "historico_planta.csv")
@@ -38,7 +39,7 @@ def generar_dataset_historico(n_muestras=100):
             
             writer.writerow([i, str_fecha, temperatura, carga])
 
-    print("¡Dataset generado exitosamente!")
+    print("Dataset generado")
 
 if __name__ == "__main__":
     generar_dataset_historico(100)

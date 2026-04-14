@@ -1,15 +1,12 @@
-"""
-AlgoritmoGenetico/optimizador.py
-Orquestador del Algoritmo Genético Modular.
-Gestiona el ciclo de vida evolutivo: Selección -> Cruzamiento -> Mutación -> Elitismo.
-"""
-
 import random
 from .config import GENERADORES, N_GENERADORES, COEFICIENTES_TERMICOS
 from .evaluacion import evaluar_poblacion
 from .seleccion import seleccion_torneo
 from .cruzamiento import aplicar_cruzamiento
 from .mutacion import aplicar_mutacion
+
+# - despacho_voraz: baseline de referencia economica
+# - ejecutar_ag: ciclo evolutivo completo usado por la app
 
 def despacho_voraz(demanda: float, temperatura: float):
     """Benchmark voraz usando el mismo modelo de costo del AG."""
@@ -29,6 +26,11 @@ def despacho_voraz(demanda: float, temperatura: float):
     costo = costo_lineal + costo_termico
     porcentajes = [int(round((asignacion[i]/GENERADORES[i][0])*100)) if GENERADORES[i][0]>0 else 0 for i in range(N_GENERADORES)]
     return asignacion, costo, sum(asignacion), porcentajes
+
+
+
+
+
 
 def ejecutar_ag(demanda: float, temperatura: float, tam_poblacion=60, generaciones=100, tasa_mutacion=0.1, num_elites=2, modo_rafaga=False):
     """Bucle evolutivo principal."""

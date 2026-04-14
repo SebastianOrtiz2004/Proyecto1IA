@@ -1,27 +1,3 @@
-"""
-charts.py — Módulo de Visualizaciones y Gráficos
-=================================================
-Contiene todas las funciones que construyen y renderizan los gráficos
-Plotly y Matplotlib del simulador. Cada función es autocontenida:
-recibe los datos que necesita y llama a st.plotly_chart() / st.pyplot()
-internamente.
-
-Solo se usan las siguientes librerías (ÚNICAMENTE para gráficos):
-  - plotly       : gráficos interactivos (barras, dispersión, líneas)
-  - matplotlib   : gráfico del conjunto difuso defuzzificado
-  - math         : math.isnan() para filtrar valores NaN (stdlib de Python)
-  - random       : nube de puntos con semilla fija (stdlib de Python)
-
-NO se utiliza numpy ni ninguna librería de cálculo numérico.
-
-Funciones:
-    graficar_cluster_barras()      → Barras horizontales (% carga y kW por generador)
-    graficar_cluster_kmeans()      → Nube de puntos estilo K-Medias
-    graficar_convergencia()        → Curva de costo mínimo vs. generación del AG
-    graficar_membresia_difusa()    → Conjunto difuso defuzzificado (matplotlib puro)
-    graficar_comparacion_despacho()→ AG vs. Voraz (barras dobles kW y costo)
-"""
-
 import math
 import random
 
@@ -30,10 +6,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
+# Guia rapida:
+# - graficar_convergencia: curva AG
+# - graficar_membresia_difusa: salida del SID
+# - graficar_analisis_dataset: validacion sobre historico
 
-# ──────────────────────────────────────────────────────────────────
-# Funciones auxiliares de estadística — Python puro (sin numpy)
-# ──────────────────────────────────────────────────────────────────
+# Funciones auxiliares de estadística
 def _media(valores: list) -> float:
     """Media aritmética de una lista. Retorna 0.0 si está vacía."""
     return sum(valores) / len(valores) if valores else 0.0
@@ -47,32 +25,11 @@ def _desvest(valores: list) -> float:
     return (sum((v - m) ** 2 for v in valores) / len(valores)) ** 0.5
 
 
-# ====================================================================
 # GRÁFICO 1: BARRAS HORIZONTALES POR GENERADOR (% Carga y kW)
-# ====================================================================
 def graficar_cluster_barras(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES,
                              demanda_kw, potencia_ag):
-    """
-    Gráfico de barras horizontales con dos paneles:
-      - Panel izquierdo:  % de carga asignado a cada generador
-      - Panel derecho:    kW despachados + línea de demanda del SID
 
-    Paleta de colores según perfil económico:
-      Verde  → eficiente (≤$90/kW)
-      Azul   → moderado ($91–$130/kW)
-      Rojo   → RESPALDO / EMERGENCIA (>$130/kW)
-      Gris   → apagado por el AG
-
-    Parámetros
-    ----------
-    mejor_cromosoma : list (8,) — genes óptimos del AG (% de carga)
-    asignacion      : list (8,) — kW asignados por generador
-    GENERADORES     : list (8,2)
-    N_GENERADORES   : int
-    demanda_kw      : float — demanda estimada por el SID
-    potencia_ag     : float — potencia total despachada por el AG
-    """
-    st.markdown("#### Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
+    st.markdown("Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
 
     # Vectores de datos (Python puro)
     nombres_gen      = [f"Gen {i+1}  ({int(GENERADORES[i][0])} kW máx)" for i in range(N_GENERADORES)]
@@ -140,27 +97,11 @@ def graficar_cluster_barras(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     st.caption("Eficientes | Moderados | Respaldo | Apagado")
 
 
-# ====================================================================
 # GRÁFICO 2: CLÚSTER ESTILO K-MEDIAS (NUBE DE PUNTOS)
-# ====================================================================
 def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADORES,
                              potencia_ag, costo_ag, brecha_pct):
-    """
-    Gráfico de dispersión estilo K-Medias: muestra los 8 generadores
-    agrupados en 3 clústeres por perfil económico (costo unitario).
-    Genera nubes de puntos con distribución normal alrededor de cada centroide.
 
-    La nube se genera con random.gauss() con semilla fija (seed=42)
-    para reproducibilidad, sin necesidad de numpy.
-
-    Clústeres:
-      Eficientes ($70–$90/kW):  Gen 4, 5, 8
-      Moderados  ($100–$110/kW): Gen 2, 7
-      Costosos   ($150–$250/kW): Gen 1, 3, 6
-
-    Los marcadores sólidos indican generadores activos.
-    """
-    st.markdown("#### Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Medias)")
+    st.markdown("Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Medias)")
     st.caption("Agrupamiento K-Medias de los generadores según coste.")
 
     # Generador aleatorio con semilla fija — la nube no cambia entre ejecuciones
@@ -251,23 +192,9 @@ def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     st.caption("Activas | Apagadas | Eficientes | Moderadas | Costosas")
 
 
-# ====================================================================
 # GRÁFICO 3: CURVA DE CONVERGENCIA DEL AG
-# ====================================================================
 def graficar_convergencia(historial_costo, gen_parada, num_generaciones):
-    """
-    Gráfica de línea del costo operativo mínimo válido (sin penalización)
-    a lo largo de las generaciones del AG.
 
-    Los valores float('nan') corresponden a generaciones donde ningún cromosoma
-    satisfacía la restricción de demanda g(x). Se representan como gaps en la curva.
-
-    Parámetros
-    ----------
-    historial_costo  : list[float] — costo mínimo limpio por generación
-    gen_parada       : int         — generación en que el AG convergió
-    num_generaciones : int         — límite máximo configurado
-    """
     total_generaciones = len(historial_costo)
     eje_generaciones   = list(range(1, total_generaciones + 1))
 
@@ -324,21 +251,8 @@ def graficar_convergencia(historial_costo, gen_parada, num_generaciones):
 # GRÁFICO 4: CONJUNTO DIFUSO DEFUZZIFICADO (matplotlib puro)
 # ====================================================================
 def graficar_membresia_difusa(simulacion_difusa, var_demanda, funcion_graficar):
-    """
-    Renderiza el gráfico del conjunto de pertenencia del consecuente (Demanda)
-    activado según la inferencia actual. Generado con matplotlib puro desde
-    fuzzy_engine.py — sin skfuzzy ni numpy.
 
-    Aplica estilo oscuro consistente con el resto de la interfaz.
-    Llama plt.close() al final para liberar memoria.
-
-    Parámetros
-    ----------
-    simulacion_difusa : dict    — objeto con la inferencia actual (de fuzzy_engine)
-    var_demanda       : any     — ignorado (compatibilidad API)
-    funcion_graficar  : callable — graficar_resultado_difuso de fuzzy_engine.py
-    """
-    st.markdown("**Conjunto Difuso Mamdani Defuzzificado (9 reglas AND):**")
+    st.markdown("Conjunto Difuso Mamdani Defuzzificado:")
     try:
         figura_difusa = funcion_graficar(simulacion_difusa, var_demanda)
         figura_difusa.patch.set_facecolor('#0e1117')
@@ -358,32 +272,11 @@ def graficar_membresia_difusa(simulacion_difusa, var_demanda, funcion_graficar):
         st.warning(f"Renderizado del conjunto difuso no disponible: {error}")
 
 
-# ====================================================================
 # GRÁFICO 5: DESPACHO ECONÓMICO AG vs. VORAZ (BARRAS DOBLES)
-# ====================================================================
 def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_GENERADORES,
                                    potencia_ag, potencia_voraz, costo_ag, costo_voraz,
                                    brecha_pct, emoji_brecha, mejor_cromosoma):
-    """
-    Gráfico de barras agrupadas comparando AG vs. Voraz generador por generador:
-      - Panel izquierdo: kW asignados (AG vs. Voraz + línea de capacidad máxima)
-      - Panel derecho:   Costo USD por generador (AG vs. Voraz)
-
-    Parámetros
-    ----------
-    asignacion       : list (8,) — kW asignados por el AG
-    asignacion_voraz : list (8,) — kW asignados por el Voraz
-    GENERADORES      : list (8,2)
-    N_GENERADORES    : int
-    potencia_ag      : float
-    potencia_voraz   : float
-    costo_ag         : float
-    costo_voraz      : float
-    brecha_pct       : float
-    emoji_brecha     : str
-    mejor_cromosoma  : list (8,)
-    """
-    st.markdown("### Despacho Económico Final — AG vs. Algoritmo Voraz")
+    st.markdown("Despacho Económico Final — AG vs. Algoritmo Voraz")
     st.caption("Comparativa económica sobre el mismo modelo de costo total (lineal + térmico).")
 
     etiquetas_gen   = [f"Gen {i+1}<br>({int(GENERADORES[i][0])}kW)" for i in range(N_GENERADORES)]
@@ -459,19 +352,11 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
     st.plotly_chart(figura, use_container_width=True)
-    st.caption("Nota: el panel derecho muestra el costo lineal por generador; el título superior compara el costo total (lineal + térmico).")
 
-
-# ====================================================================
 # GRÁFICO 6: ANÁLISIS HISTÓRICO DEL DATASET (100 MUESTRAS)
-# ====================================================================
+
 def graficar_analisis_dataset(resultados):
-    """
-    Renderiza tres gráficos interpretables para validar desempeño del sistema:
-      1. Dispersión Real vs Estimada (con línea ideal y=x)
-      2. Error absoluto por muestra (con línea media de error)
-      3. Costo AG vs Demanda estimada (comportamiento económico)
-    """
+
     ids = [r['id'] for r in resultados]
     dem_real = [r['dem_real'] for r in resultados]
     dem_est = [r['dem_est'] for r in resultados]

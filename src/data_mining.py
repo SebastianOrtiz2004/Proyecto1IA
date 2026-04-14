@@ -1,21 +1,11 @@
-"""
-data_mining.py — Algoritmo Apriori para Minería de Reglas de Asociación (PYTHON PURO)
-===================================================================================
-Implementación desde cero del algoritmo Apriori para extraer reglas de decisión
-basadas en el dataset histórico de la planta. 
-
-Proceso:
-  1. Carga del CSV.
-  2. Discretización: Convertir valores numéricos a etiquetas (Frio, Normal, Caliente, etc.)
-  3. Generación de Itemsets Frecuentes (Soporte).
-  4. Generación de Reglas de Asociación (Confianza).
-  5. Filtrado de reglas útiles para el motor difuso.
-"""
 
 import csv
 from pathlib import Path
 
-# Ruta al dataset desde la carpeta src/
+# 1) cargar_datos_csv -> lee histórico
+# 2) discretizar_datos -> pasa a etiquetas
+# 3) minar_reglas_proyecto -> devuelve reglas finales temp+prod=>dem
+
 BASE_DIR = Path(__file__).resolve().parent
 RUTA_DATASET = BASE_DIR / "DataSet" / "historico_planta.csv"
 
@@ -43,7 +33,7 @@ def cargar_datos_csv(ruta=None):
     return datos
 
 def discretizar_datos(datos):
-    """Convierte valores continuos en categorías para Apriori."""
+#Convierte valores continuos en categorías para Apriori.
     transacciones = []
     for d in datos:
         t = []
@@ -94,10 +84,10 @@ def obtener_itemsets_frecuentes(transacciones, soporte_min=0.01): # Bajado a 1%
     return frecuentes
 
 def extraer_reglas_fuzzy(frecuentes, confianza_min=0.35): # Bajado a 35% para mayor cobertura
-    """
-    Extrae reglas del tipo: {temp_X, prod_Y} => {dem_Z}
-    Filtra solo las reglas que sirven para el motor difuso.
-    """
+    
+    #Extrae reglas del tipo: {temp_X, prod_Y} => {dem_Z}
+    #Filtra solo las reglas que sirven para el motor difuso.
+    
     reglas = []
     
     # Buscamos itemsets de tamao 3 que tengan (1 temp, 1 prod, 1 dem)
@@ -126,7 +116,6 @@ def extraer_reglas_fuzzy(frecuentes, confianza_min=0.35): # Bajado a 35% para ma
     return reglas
 
 def minar_reglas_proyecto():
-    """Función principal para ser llamada desde app.py o fuzzy_engine.py"""
     datos = cargar_datos_csv()
     if not datos:
         return []
