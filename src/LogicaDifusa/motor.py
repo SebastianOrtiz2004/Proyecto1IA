@@ -18,15 +18,15 @@ def construir_sistema_difuso():
     universo_dem  = list(range(200, 2201))
 
     mfs_temp = {
-        'frio':     (0,   10,  22),
+        'frio':     (0,    0,  22),
         'normal':   (18,  25,  32),
-        'caliente': (28,  40, 100),
+        'caliente': (28, 100, 100),
     }
 
     mfs_prod = {
-        'bajo':  (0,   20,  45),
+        'bajo':  (0,    0,  45),
         'medio': (35,  55,  75),
-        'alto':  (65,  85, 100),
+        'alto':  (65, 100, 100),
     }
 
     mfs_dem = {
@@ -36,10 +36,25 @@ def construir_sistema_difuso():
     }
 
     reglas_minadas = minar_reglas_proyecto()
-    reglas = [(r['prod'], r['temp'], r['dem']) for r in reglas_minadas]
 
-    if not reglas:
-        reglas = [('medio', 'normal', 'media'), ('alto', 'normal', 'alta'), ('bajo', 'normal', 'baja')]
+    # Base completa 3x3 para garantizar cobertura de inferencia en todo el dominio.
+    reglas_base = {
+        ('bajo', 'frio'): 'baja',
+        ('bajo', 'normal'): 'baja',
+        ('bajo', 'caliente'): 'media',
+        ('medio', 'frio'): 'media',
+        ('medio', 'normal'): 'media',
+        ('medio', 'caliente'): 'alta',
+        ('alto', 'frio'): 'media',
+        ('alto', 'normal'): 'alta',
+        ('alto', 'caliente'): 'alta',
+    }
+
+    # Las reglas minadas tienen prioridad para respetar el conocimiento del dataset.
+    for regla in reglas_minadas:
+        reglas_base[(regla['prod'], regla['temp'])] = regla['dem']
+
+    reglas = [(prod, temp, dem) for (prod, temp), dem in reglas_base.items()]
 
     sistema = {
         'universo_temp': universo_temp, 'universo_prod': universo_prod, 'universo_dem': universo_dem,

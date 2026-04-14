@@ -5,27 +5,38 @@ Gestiona el ciclo de vida evolutivo: Selección -> Cruzamiento -> Mutación -> E
 """
 
 import random
-from .config import GENERADORES, N_GENERADORES
+from .config import GENERADORES, N_GENERADORES, COEFICIENTES_TERMICOS
 from .evaluacion import evaluar_poblacion
 from .seleccion import seleccion_torneo
 from .cruzamiento import aplicar_cruzamiento
 from .mutacion import aplicar_mutacion
 
 def despacho_voraz(demanda: float, temperatura: float):
-    """Benchmark voraz (mantenido por compatibilidad)."""
+    """Benchmark voraz usando el mismo modelo de costo del AG."""
     orden = sorted(range(N_GENERADORES), key=lambda i: GENERADORES[i][1])
     asignacion = [0.0] * N_GENERADORES
-    restante = demanda
+    restante = max(0.0, float(demanda))
     for i in orden:
-        if restante <= 0: break
-        kw = min(restante, GENERADORES[i][0]); asignacion[i] = kw; restante -= kw
-    
-    costo = sum(asignacion[i]*GENERADORES[i][1] for i in range(N_GENERADORES))
+        if restante <= 0:
+            break
+        kw = min(restante, GENERADORES[i][0])
+        asignacion[i] = kw
+        restante -= kw
+
+    tn = max(0.0, float(temperatura)) / 100.0
+    costo_lineal = sum(asignacion[i] * GENERADORES[i][1] for i in range(N_GENERADORES))
+    costo_termico = sum(COEFICIENTES_TERMICOS[i] * tn * (asignacion[i] ** 2) for i in range(N_GENERADORES))
+    costo = costo_lineal + costo_termico
     porcentajes = [int(round((asignacion[i]/GENERADORES[i][0])*100)) if GENERADORES[i][0]>0 else 0 for i in range(N_GENERADORES)]
     return asignacion, costo, sum(asignacion), porcentajes
 
 def ejecutar_ag(demanda: float, temperatura: float, tam_poblacion=60, generaciones=100, tasa_mutacion=0.1, num_elites=2, modo_rafaga=False):
     """Bucle evolutivo principal."""
+    tam_poblacion = max(2, int(tam_poblacion))
+    generaciones = max(1, int(generaciones))
+    tasa_mutacion = min(1.0, max(0.0, float(tasa_mutacion)))
+    num_elites = max(1, min(int(num_elites), tam_poblacion - 1))
+
     if modo_rafaga:
         tam_poblacion, generaciones = min(tam_poblacion, 35), min(generaciones, 45)
 

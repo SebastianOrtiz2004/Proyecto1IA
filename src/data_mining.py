@@ -13,27 +13,33 @@ Proceso:
 """
 
 import csv
-import os
+from pathlib import Path
 
 # Ruta al dataset desde la carpeta src/
-RUTA_DATASET = "src/DataSet/historico_planta.csv"
+BASE_DIR = Path(__file__).resolve().parent
+RUTA_DATASET = BASE_DIR / "DataSet" / "historico_planta.csv"
 
 def cargar_datos_csv(ruta=None):
     """Lee el CSV y devuelve una lista de diccionarios."""
     if ruta is None:
         ruta = RUTA_DATASET
+    ruta = Path(ruta)
     datos = []
-    if not os.path.exists(ruta):
-        print(f"Error: No se encontró el dataset en {os.path.abspath(ruta)}")
+    if not ruta.exists():
+        print(f"Error: No se encontró el dataset en {ruta.resolve()}")
         return datos
     with open(ruta, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for fila in reader:
-            datos.append({
-                'temp': float(fila['Temperatura_Ambiente_C']),
-                'carga': float(fila['Carga_Industrial_Pct']),
-                'demanda': float(fila['Demanda_Real_kW'])
-            })
+            try:
+                datos.append({
+                    'temp': float(fila['Temperatura_Ambiente_C']),
+                    'carga': float(fila['Carga_Industrial_Pct']),
+                    'demanda': float(fila['Demanda_Real_kW'])
+                })
+            except (KeyError, TypeError, ValueError):
+                # Se ignoran filas corruptas para no detener el minado completo.
+                continue
     return datos
 
 def discretizar_datos(datos):

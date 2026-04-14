@@ -72,7 +72,7 @@ def graficar_cluster_barras(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     demanda_kw      : float — demanda estimada por el SID
     potencia_ag     : float — potencia total despachada por el AG
     """
-    st.markdown("#### 📊 Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
+    st.markdown("#### Gráfico del Clúster — Carga (%) y Potencia (kW) por Generador")
 
     # Vectores de datos (Python puro)
     nombres_gen      = [f"Gen {i+1}  ({int(GENERADORES[i][0])} kW máx)" for i in range(N_GENERADORES)]
@@ -137,7 +137,7 @@ def graficar_cluster_barras(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     figura.update_yaxes(gridcolor='#2a2a3a')
 
     st.plotly_chart(figura, use_container_width=True)
-    st.caption("🟢 Eficientes | 🔵 Moderados | 🔴 Respaldo | ⬜ Apagado")
+    st.caption("Eficientes | Moderados | Respaldo | Apagado")
 
 
 # ====================================================================
@@ -154,13 +154,13 @@ def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     para reproducibilidad, sin necesidad de numpy.
 
     Clústeres:
-      🟢 Eficientes ($70–$90/kW):  Gen 4, 5, 8
-      🟡 Moderados  ($100–$110/kW): Gen 2, 7
-      🔴 Costosos   ($150–$250/kW): Gen 1, 3, 6
+      Eficientes ($70–$90/kW):  Gen 4, 5, 8
+      Moderados  ($100–$110/kW): Gen 2, 7
+      Costosos   ($150–$250/kW): Gen 1, 3, 6
 
-    Las estrellas (⭐) marcan los generadores activos del sistema.
+    Los marcadores sólidos indican generadores activos.
     """
-    st.markdown("#### 🔵 Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Medias)")
+    st.markdown("#### Gráfico de Clúster — Agrupamiento por Perfil Económico (Estilo K-Medias)")
     st.caption("Agrupamiento K-Medias de los generadores según coste.")
 
     # Generador aleatorio con semilla fija — la nube no cambia entre ejecuciones
@@ -223,7 +223,7 @@ def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
                     f"kW asignados: {float(asignacion[i]):.1f}<br>"
                     f"Carga: {int(mejor_cromosoma[i])}%<br>"
                     f"Costo parcial: ${float(asignacion[i])*GENERADORES[i][1]:,.0f}<br>"
-                    f"Estado: {'⭐ OPERANDO' if activo else '⚫ APAGADO'}"
+                    f"Estado: {'OPERANDO' if activo else 'APAGADO'}"
                 ),
                 hoverinfo='text',
             ))
@@ -248,7 +248,7 @@ def graficar_cluster_kmeans(mejor_cromosoma, asignacion, GENERADORES, N_GENERADO
     )
 
     st.plotly_chart(figura, use_container_width=True)
-    st.caption("⭐ Activas | ○ Apagadas | 🟢 Eficientes | 🟡 Moderadas | 🔴 Costosas")
+    st.caption("Activas | Apagadas | Eficientes | Moderadas | Costosas")
 
 
 # ====================================================================
@@ -315,7 +315,7 @@ def graficar_convergencia(historial_costo, gen_parada, num_generaciones):
     )
     st.plotly_chart(figura, use_container_width=True)
     st.caption(
-        "ℹ️ Los gaps iniciales indican generaciones donde ningún cromosoma "
+        "Los gaps iniciales indican generaciones donde ningún cromosoma "
         "satisfacía g(x). Ilustra el escape de la barrera de penalización."
     )
 
@@ -383,8 +383,8 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
     emoji_brecha     : str
     mejor_cromosoma  : list (8,)
     """
-    st.markdown("### 📈 Despacho Económico Final — AG vs. Algoritmo Voraz")
-    st.caption("El Voraz ignora el costo cuadrático-térmico, mientras que el AG lo penaliza encontrando un mejor equilibrio.")
+    st.markdown("### Despacho Económico Final — AG vs. Algoritmo Voraz")
+    st.caption("Comparativa económica sobre el mismo modelo de costo total (lineal + térmico).")
 
     etiquetas_gen   = [f"Gen {i+1}<br>({int(GENERADORES[i][0])}kW)" for i in range(N_GENERADORES)]
     costos_ag_op    = [asignacion[i] * GENERADORES[i][1]       for i in range(N_GENERADORES)]
@@ -402,7 +402,7 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
         rows=1, cols=2,
         subplot_titles=(
             f"kW Asignados por Gen.  |  AG={potencia_ag:.0f} kW  vs  Voraz={potencia_voraz:.0f} kW",
-            f"Costo por Gen. (USD)   |  AG=${costo_ag:,.0f}  vs  Voraz=${costo_voraz:,.0f}",
+            f"Costo lineal por Gen. (USD)   |  Total AG=${costo_ag:,.0f}  vs  Total Voraz=${costo_voraz:,.0f}",
         ),
         horizontal_spacing=0.1
     )
@@ -459,6 +459,7 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=1)
     figura.update_yaxes(gridcolor='#2a2a3a', row=1, col=2)
     st.plotly_chart(figura, use_container_width=True)
+    st.caption("Nota: el panel derecho muestra el costo lineal por generador; el título superior compara el costo total (lineal + térmico).")
 
 
 # ====================================================================
@@ -466,30 +467,86 @@ def graficar_comparacion_despacho(asignacion, asignacion_voraz, GENERADORES, N_G
 # ====================================================================
 def graficar_analisis_dataset(resultados):
     """
-    Renderiza dos gráficos de serie temporal para el análisis del dataset:
-      1. Comparación de Demanda (Real vs. Estimada por SID)
-      2. Evolución del Costo Optimizado por el AG
+    Renderiza tres gráficos interpretables para validar desempeño del sistema:
+      1. Dispersión Real vs Estimada (con línea ideal y=x)
+      2. Error absoluto por muestra (con línea media de error)
+      3. Costo AG vs Demanda estimada (comportamiento económico)
     """
     ids = [r['id'] for r in resultados]
     dem_real = [r['dem_real'] for r in resultados]
     dem_est = [r['dem_est'] for r in resultados]
     costos = [r['costo'] for r in resultados]
+    errores_abs = [abs(r['dem_real'] - r['dem_est']) for r in resultados]
+    error_medio = _media(errores_abs)
+    min_dem = min(dem_real + dem_est) if (dem_real and dem_est) else 0
+    max_dem = max(dem_real + dem_est) if (dem_real and dem_est) else 1
 
-    figura = make_subplots(rows=2, cols=1, 
-                          subplot_titles=("Comparación de Demanda: Real vs SID", "Costo Operativo Optimizado (AG)"),
-                          vertical_spacing=0.15)
+    figura = make_subplots(
+        rows=3,
+        cols=1,
+        subplot_titles=(
+            "Validación SID: Demanda Real vs Demanda Estimada",
+            "Error Absoluto de Estimación por Muestra",
+            "Costo AG en función de la Demanda Estimada"
+        ),
+        vertical_spacing=0.10
+    )
 
-    # Gráfico 1: Demanda
-    figura.add_trace(go.Scatter(x=ids, y=dem_real, name="Demanda Real", line=dict(color='#ff6b6b', width=2)), row=1, col=1)
-    figura.add_trace(go.Scatter(x=ids, y=dem_est, name="Demanda SID", line=dict(color='#00ffcc', width=2, dash='dot')), row=1, col=1)
+    # Gráfico 1: Dispersión Real vs Estimada + línea ideal
+    figura.add_trace(
+        go.Scatter(
+            x=dem_real, y=dem_est,
+            mode='markers',
+            name="Muestras (Real, SID)",
+            marker=dict(color='rgba(0,255,204,0.75)', size=7),
+            hovertemplate='Real: %{x:.1f} kW<br>SID: %{y:.1f} kW<extra></extra>',
+        ),
+        row=1, col=1
+    )
+    figura.add_trace(
+        go.Scatter(
+            x=[min_dem, max_dem], y=[min_dem, max_dem],
+            mode='lines',
+            name="Referencia y=x",
+            line=dict(color='#ff6b6b', dash='dash', width=2),
+            hoverinfo='skip',
+        ),
+        row=1, col=1
+    )
 
-    # Gráfico 2: Costo
-    figura.add_trace(go.Scatter(x=ids, y=costos, name="Costo USD", fill='tozeroy', line=dict(color='#f2c94c')), row=2, col=1)
+    # Gráfico 2: Error absoluto por muestra + línea media
+    figura.add_trace(
+        go.Scatter(
+            x=ids, y=errores_abs, name="Error Absoluto (kW)",
+            fill='tozeroy', line=dict(color='#66a3ff')
+        ),
+        row=2, col=1
+    )
+    figura.add_hline(
+        y=error_medio, line_color='#f2c94c', line_dash='dash',
+        annotation_text=f"Error medio: {error_medio:.1f} kW",
+        annotation_font_color='#f2c94c', row=2, col=1
+    )
 
-    figura.update_layout(height=600, template='plotly_dark', plot_bgcolor='#111', paper_bgcolor='#0e1117',
+    # Gráfico 3: Costo vs Demanda estimada
+    figura.add_trace(
+        go.Scatter(
+            x=dem_est, y=costos,
+            mode='markers',
+            name="Costo AG",
+            marker=dict(color='rgba(242,201,76,0.85)', size=7),
+            hovertemplate='Demanda SID: %{x:.1f} kW<br>Costo AG: %{y:.1f} USD<extra></extra>',
+        ),
+        row=3, col=1
+    )
+
+    figura.update_layout(height=820, template='plotly_dark', plot_bgcolor='#111', paper_bgcolor='#0e1117',
                         margin=dict(t=50, b=50), showlegend=True)
-    figura.update_xaxes(title="Muestra (Hora)", row=2, col=1)
-    figura.update_yaxes(title="kW", row=1, col=1)
-    figura.update_yaxes(title="USD", row=2, col=1)
+    figura.update_xaxes(title="Demanda real (kW)", row=1, col=1)
+    figura.update_yaxes(title="Demanda SID (kW)", row=1, col=1)
+    figura.update_xaxes(title="Muestra", row=2, col=1)
+    figura.update_yaxes(title="Error (kW)", row=2, col=1)
+    figura.update_xaxes(title="Demanda SID (kW)", row=3, col=1)
+    figura.update_yaxes(title="Costo AG (USD)", row=3, col=1)
 
     st.plotly_chart(figura, use_container_width=True)

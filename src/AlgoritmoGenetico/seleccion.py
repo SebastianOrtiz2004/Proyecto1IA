@@ -11,6 +11,9 @@ def seleccion_torneo(poblacion: list, aptitud: list, k: int = 3):
     """
     nueva_poblacion = []
     tam_poblacion = len(poblacion)
+    if tam_poblacion == 0:
+        return nueva_poblacion
+    k = max(1, min(int(k), tam_poblacion))
     
     for _ in range(tam_poblacion):
         combatientes = random.sample(range(tam_poblacion), k)
